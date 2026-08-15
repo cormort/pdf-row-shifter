@@ -236,6 +236,11 @@ onkeydown = e => {
 const nlines=(a,b)=>units.slice(a,b).reduce((n,u)=>n+u.length,0);
 const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
 const th=l=>l.t||.5;
+function status(){
+  msg.textContent=`${nlines(0,units.length)} 列 / 每頁上限 ${perPage} 列`
+    + (sel.size?`　已選 ${sel.size} 列`:'') + (selSeg.size?`　已選 ${selSeg.size} 格`:'');
+  bu.disabled=!undoS.length; br.disabled=!redoS.length;
+}
 
 // 文字在 PDF 裡是以「基線」定位，但 CSS 的 top 是行框上緣，兩者相差多少要看實際字型的
 // ascent，猜不得（Times 0.89、正黑 1.08）。實地量一次每種字型組合，之後直接換算。
@@ -313,9 +318,7 @@ function render(){
     }
     start=end;
   });
-  msg.textContent=`${nlines(0,units.length)} 列 / 每頁上限 ${perPage} 列` +
-    (sel.size?`　已選 ${sel.size} 項`:'');
-  bu.disabled=!undoS.length; br.disabled=!redoS.length;
+  status();
   bindDrag(); bindEdit(); fitWidths();
 }
 
@@ -399,8 +402,9 @@ function bindEdit(){
       if(!ev.altKey) return;                       // 一般點擊仍然是選整列
       ev.stopPropagation(); ev.preventDefault();
       selSeg.has(el.dataset.p) ? selSeg.delete(el.dataset.p) : selSeg.add(el.dataset.p);
-      el.classList.toggle('pick');
-      msg.textContent=`已選 ${selSeg.size} 格`;
+      out.querySelectorAll(`.seg[data-p="${el.dataset.p}"]`)
+         .forEach(x=>x.classList.toggle('pick', selSeg.has(el.dataset.p)));
+      status();
     };
     el.ondblclick=ev=>{
       ev.stopPropagation();
@@ -454,17 +458,24 @@ function ungroup(){
   sel.clear(); render();
 }
 
+function paintSel(){
+  out.querySelectorAll('.row').forEach(e=>e.classList.toggle('sel', sel.has(+e.dataset.i)));
+  status();
+}
+
 let dragI=null, lastI=null;
 function bindDrag(){
   out.querySelectorAll('.row').forEach(e=>{
     const i=+e.dataset.i;
     // 選取一律是連續範圍：點一下設起點，Shift 點另一列拉出整段
+    // 注意：這裡只換 class，不能整個 render()——重畫會把 DOM 換掉，
+    // 第二次點擊落在新元素上，雙擊編輯就永遠觸發不了。
     e.onclick=ev=>{
       sel.clear();
       if(ev.shiftKey && lastI!==null)
         for(let k=Math.min(i,lastI);k<=Math.max(i,lastI);k++) sel.add(k);
       else { sel.add(i); lastI=i; }
-      render();
+      paintSel();
     };
     e.ondragstart=()=>dragI=i;
     e.ondragover=ev=>ev.preventDefault();
