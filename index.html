@@ -48,6 +48,8 @@
   <label title="表身上下留白，避免字壓到天地線">邊界 上<input type="number" id="padT" value="2" min="0" max="60" step="1" style="width:3.5em">
     下<input type="number" id="padB" value="2" min="0" max="60" step="1" style="width:3.5em"> pt</label>
   <label title="畫出表身上下界（只在畫面上，不會印出來）"><input type="checkbox" id="guide" checked> 輔助線</label>
+  <label title="列高再怎麼壓縮都不低於這個值">最小列高 <input type="number" id="minLh" value="0" min="0" max="60" step="0.5" style="width:4em"> pt</label>
+  <button id="avgAll" title="所有頁面的列都平均分佈到表身底端">平均列高：全部頁面</button>
   <label><input type="checkbox" id="editMode"> 編輯（點格子改字）</label>
   <button id="bu" onclick="undo()" title="復原">↩ 復原</button>
   <button id="br" onclick="redo()" title="重做">↪ 重做</button>
@@ -77,6 +79,9 @@ bu.title=`復原 (${KMOD}Z)`; br.title=`重做 (${MAC?'⇧⌘Z':'Ctrl+Shift+Z'})
 
 // 版面（固定，不隨資料跑）：W/H 頁面尺寸、frame 天地線與欄線、head 固定頁首、bodyTop/LH 表身格線
 // units[i] = 一個可搬動單位（1 列，或群組後的多列）；breaks 以 unit 為索引
+let minLH=0;
+const avgPg=new Set();        // 要平均列高的頁（非最後一頁本來就是平均的）
+const locks=new Set();        // 鎖住的分頁點，以「第幾個 unit 之後斷頁」記，不受其他頁增減影響
 let W=595,pageW=595,H=842, frame=[], head=[], rows=[], units=[], breaks=[], PADT=2, PADB=2, topY=0, bodyTop=0, bodyBot=800, bottomY=800, fillY=800, LH=7, perPage=1;
 const sel=new Set();
 
@@ -85,6 +90,10 @@ f.onchange = e => { buf=e.target.files[0]; load(); };
 spread.onchange = () => buf && load();
 padT.oninput = padB.oninput = () => { PADT=+padT.value||0; PADB=+padB.value||0; units.length && relayout(); };
 guide.onchange = () => units.length && render();
+minLh.oninput = () => { minLH=+minLh.value||0; units.length && render(); };
+// 全部頁面：有任何一頁還沒平均就全開，都開了就全關
+avgAll.onclick = () => { const on=avgPg.size<breaks.length; avgPg.clear();
+  if(on) breaks.forEach((_,i)=>avgPg.add(i)); render(); };
 editMode.onchange = () => { document.body.classList.toggle('edit', editMode.checked); units.length && render(); };
 
 async function load(){
@@ -138,8 +147,9 @@ function relayout(){
   // 表身底端 = 原檔最滿的一頁最後一列的位置，用它當各頁對齊的基準
   const maxLines = Math.max(...breaks.map((e,i)=>nlines(i?breaks[i-1]:0, e)));
   fillY = Math.min(bodyBot, bodyTop + (maxLines-1)*LH);
-  // ponytail: 行距最多壓到原本的 60%，再多就不好看了；要更緊改這個係數
-  perPage = Math.floor((bodyBot-bodyTop)/(LH*.6))+1;
+  // 最小列高預設為原行高的 60%，再緊就不好看了；使用者可在工具列改
+  if(!minLH){ minLH=+(LH*.6).toFixed(1); minLh.value=minLH; }
+  perPage = Math.floor((bodyBot-bodyTop)/minLH)+1;
   render();
 }
 
@@ -356,8 +366,10 @@ function render(){
     const last=pi===breaks.length-1;
     // 非最後一頁一律撐到表身底端（不設放寬上限，否則行距小的表會在下方留一大塊空白）；
     // 壓縮則最多到原行高的 60%。
-    const lh=last ? Math.min(LH,(bodyBot-bodyTop)/Math.max(1,n-1))
-                  : Math.max(LH*.6, (fillY-bodyTop)/Math.max(1,n-1));
+    // 非最後一頁一律平均撐滿；最後一頁預設維持原行高，勾了「平均」才跟著撐開
+    const avg = !last || avgPg.has(pi);
+    const lh = Math.max(minLH, avg ? (fillY-bodyTop)/Math.max(1,n-1)
+                                   : Math.min(LH,(bodyBot-bodyTop)/Math.max(1,n-1)));
     let li=0;
     units.slice(start,end).forEach((u,i)=>{
       halves.forEach((h,k)=>{
@@ -373,14 +385,20 @@ function render(){
       li+=u.length;
     });
     out.appendChild(sheet);
-    if(pi<breaks.length-1){
-      const b=document.createElement('div'); b.className='brk';
-      b.innerHTML=`分頁 ${pi+1}/${pi+2}
-        <button data-d="-1">↓ 最後一列推到下頁</button>
-        <button data-d="1">↑ 下頁第一列拉上來</button>`;
-      b.onclick=ev=>{ const v=+ev.target.dataset.d; if(v) move(pi,v); };
-      out.appendChild(b);
-    }
+    const b=document.createElement('div'); b.className='brk';
+    const lk=locks.has(end);
+    b.innerHTML=`第 ${pi+1} 頁　列高 ${lh.toFixed(1)}pt
+      <label><input type=checkbox data-a=1 ${avg?'checked':''} ${last?'':'disabled'}> 平均列高（本頁）</label>`
+      + (last?'':`　<button data-k=1 title="鎖住後這個分頁點不能移動">${lk?'🔒 已鎖':'🔓 鎖定'}</button>
+        <button data-d="-1" ${lk?'disabled':''}>↓ 最後一列推到下頁</button>
+        <button data-d="1" ${lk?'disabled':''}>↑ 下頁第一列拉上來</button>`);
+    b.onclick=ev=>{
+      const t=ev.target;
+      if(t.dataset.a){ t.checked?avgPg.add(pi):avgPg.delete(pi); return render(); }
+      if(t.dataset.k){ locks.has(end)?locks.delete(end):locks.add(end); return render(); }
+      const v=+t.dataset.d; if(v) move(pi,v);
+    };
+    out.appendChild(b);
     start=end;
   });
   status();
@@ -395,6 +413,7 @@ function render(){
 }
 
 function move(pi,d){
+  if(locks.has(breaks[pi])) return;                             // 分頁點鎖定中
   const prev = pi===0?0:breaks[pi-1];
   if(d<0 && breaks[pi]-1<=prev) return;                        // 本頁不能空
   if(d>0){
