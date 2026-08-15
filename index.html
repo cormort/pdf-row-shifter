@@ -16,6 +16,9 @@
   .row.sel{background:#fff3cd}
   .row.grp{box-shadow:inset 2px 0 0 #34a853}
   .seg[data-p]{cursor:text}
+  body.edit .row{cursor:default}
+  body.edit .row:hover{outline:none;background:none}
+  body.edit .seg[data-p]:hover{outline:1px dotted #4285f4;background:#e8f0fe}
   .seg.editing{outline:1px solid #4285f4;background:#fff;z-index:5;min-width:1em}
   .seg.pick{outline:1px solid #ea4335;background:#fce8e6;z-index:4}
   @media print{.seg.pick{outline:none;background:none}}
@@ -40,6 +43,7 @@
 <div id="ctl">
   <input type="file" id="f" accept="application/pdf">
   <label><input type="checkbox" id="spread"> 對開表（兩頁併一版）</label>
+  <label><input type="checkbox" id="editMode"> 編輯（點格子改字）</label>
   <button id="bu" onclick="undo()" title="復原">↩ 復原</button>
   <button id="br" onclick="redo()" title="重做">↪ 重做</button>
   <button onclick="group()">組成群組</button>
@@ -74,6 +78,7 @@ const sel=new Set();
 let buf=null;
 f.onchange = e => { buf=e.target.files[0]; load(); };
 spread.onchange = () => buf && load();
+editMode.onchange = () => { document.body.classList.toggle('edit', editMode.checked); units.length && render(); };
 
 async function load(){
   const doc = await U.getDocument(await buf.arrayBuffer()).promise;
@@ -301,7 +306,8 @@ function render(){
         e.className='row'+(sel.has(start+i)?' sel':'')+(u.length>1?' grp':'');
         // 框往上抬 0.8 行，讓可點擊範圍蓋住文字本身而不是它下面那行
         e.style.cssText=`left:0;top:${bodyTop+li*lh-lh*.8}pt;width:100%;height:${u.length*lh}pt`;
-        e.draggable=true; e.dataset.i=start+i;
+        e.draggable=!editMode.checked;   // 編輯模式下不拖曳，否則點字會變成拖列
+      e.dataset.i=start+i;
         e.innerHTML=u.map((r,j)=>segs(r,0,true,0,j*lh+lh*.8,`u,${start+i},${j}`,k)).join('');
         h.appendChild(e);
       });
@@ -394,19 +400,27 @@ function setX(p,x){
   owner[b] = Object.assign(owner[b].map((s,i)=>i==c?{...s,x}:s), {y:owner[b].y});
 }
 
-// ── 就地編輯：雙擊任一格改字，Enter 或點別處存檔、Esc 放棄 ──
+// ── 就地編輯：勾選「編輯」後點格子改字，Enter 或點別處存檔、Esc 放棄 ──
 function bindEdit(){
   out.querySelectorAll('.seg[data-p]').forEach(el=>{
     if(selSeg.has(el.dataset.p)) el.classList.add('pick');
     el.onclick=ev=>{
-      if(!ev.altKey) return;                       // 一般點擊仍然是選整列
-      ev.stopPropagation(); ev.preventDefault();
-      selSeg.has(el.dataset.p) ? selSeg.delete(el.dataset.p) : selSeg.add(el.dataset.p);
-      out.querySelectorAll(`.seg[data-p="${el.dataset.p}"]`)
-         .forEach(x=>x.classList.toggle('pick', selSeg.has(el.dataset.p)));
-      status();
+      if(ev.altKey){                               // ⌥/Alt 點：選格子做對齊
+        ev.stopPropagation(); ev.preventDefault();
+        selSeg.has(el.dataset.p) ? selSeg.delete(el.dataset.p) : selSeg.add(el.dataset.p);
+        out.querySelectorAll(`.seg[data-p="${el.dataset.p}"]`)
+           .forEach(x=>x.classList.toggle('pick', selSeg.has(el.dataset.p)));
+        status(); return;
+      }
+      if(editMode.checked) edit(el, ev);           // 編輯模式：點一下就改字
+      // 否則不攔截，交給整列的點擊去做選取
     };
-    el.ondblclick=ev=>{
+    el.ondblclick=ev=>edit(el, ev);                // 沒開編輯模式時，雙擊仍然可以改
+  });
+}
+
+function edit(el, ev){
+      if(el.isContentEditable) return;
       ev.stopPropagation();
       const row=el.closest('.row'); if(row) row.draggable=false;
       const old=el.textContent;
@@ -424,8 +438,6 @@ function bindEdit(){
         if(e.key==='Enter'){ e.preventDefault(); el.blur(); }
         if(e.key==='Escape'){ el.textContent=old; el.blur(); }
       };
-    };
-  });
 }
 // data-p = "u,單位,行,片段" 或 "h,頁,列,片段"
 // 改字時整列換成新物件（copy-on-write），舊快照才留得住原文，復原才有效
