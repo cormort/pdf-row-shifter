@@ -78,7 +78,9 @@ async function load(){
       const pg=await doc.getPage(p+k), vp=pg.getViewport({scale:1});
       pageW=vp.width; H=vp.height;
       const dx=k*pageW;
-      txt.push(...lines(await pg.getTextContent(), H).map(r=>shift(r,dx)));
+      const c=await pg.getTextContent();
+      await pg.getOperatorList();          // 跑過才會把字型載進 commonObjs，粗體資訊在那裡
+      txt.push(...lines(c, H, bolds(pg,c)).map(r=>shift(r,dx)));
       if(p===1) fr.push(...(await getFrame(pg,H)).map(l=>({...l, x:l.x+dx})));
     }
     W = pageW*N;
@@ -115,9 +117,19 @@ async function load(){
 };
 
 // 文字依 y 分列（3pt 內同列），座標轉為由上而下
-function lines(c,H){
+// 哪些字型是粗體：字型名稱裡的 Bold/Black/Heavy（例：MicrosoftJhengHeiBold、TimesNewRomanPS-BoldMT）
+function bolds(pg,c){
+  const m={};
+  for(const fn of Object.keys(c.styles||{})){
+    let nm=''; try{ nm=(pg.commonObjs.get(fn)||{}).name||''; }catch(e){}
+    m[fn]=/bold|black|heavy|semib/i.test(nm);
+  }
+  return m;
+}
+
+function lines(c,H,bold={}){
   const its=c.items.filter(i=>i.str.trim())
-    .map(i=>({x:i.transform[4], y:H-i.transform[5], t:i.str, w:i.width,
+    .map(i=>({x:i.transform[4], y:H-i.transform[5], t:i.str, w:i.width, b:bold[i.fontName]?1:0,
               sz:Math.hypot(i.transform[2],i.transform[3])}))
     .sort((a,b)=>a.y-b.y);
   const out=[]; let cur=null;
@@ -294,7 +306,7 @@ function segs(r, top, rel, pgno, dy=0, path='', half=0){
   const pn=s=>pgno&&r.length<=2&&/^\d+$/.test(s.t);
   const txt=s=>pn(s) ? String(pgno+Math.floor(s.x/pageW)) : s.t;
   return r.map((s,k)=>[s,k]).filter(([s])=>Math.floor(s.x/pageW)===half)
-    .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy:s.y)-s.sz}pt;font-size:${s.sz}pt;line-height:${s.sz}pt">${esc(txt(s))}</span>`).join('');
+    .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy:s.y)-s.sz}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}">${esc(txt(s))}</span>`).join('');
 }
 
 // 系統字型的字寬跟原檔內嵌字型不同，數字排出來會比原本寬、壓到欄線上。
