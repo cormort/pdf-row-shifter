@@ -50,6 +50,8 @@
   <label title="畫出表身上下界（只在畫面上，不會印出來）"><input type="checkbox" id="guide" checked> 輔助線</label>
   <label title="列高再怎麼壓縮都不低於這個值">最小列高 <input type="number" id="minLh" value="0" min="0" max="60" step="0.5" style="width:4em"> pt</label>
   <button id="avgAll" title="所有頁面的列都平均分佈到表身底端">平均列高：全部頁面</button>
+  <button id="freeze" title="把目前每一個分頁點都鎖起來，之後不會被推拉動到">🔒 凍結分頁</button>
+  <button id="unfreeze" title="解開所有鎖定的分頁點（分頁位置不變）">🔓 清除鎖定</button>
   <label><input type="checkbox" id="editMode"> 編輯（點格子改字）</label>
   <button id="bu" onclick="undo()" title="復原">↩ 復原</button>
   <button id="br" onclick="redo()" title="重做">↪ 重做</button>
@@ -92,6 +94,8 @@ padT.oninput = padB.oninput = () => { PADT=+padT.value||0; PADB=+padB.value||0; 
 guide.onchange = () => units.length && render();
 minLh.oninput = () => { minLH=+minLh.value||0; units.length && render(); };
 // 全部頁面：有任何一頁還沒平均就全開，都開了就全關
+freeze.onclick = () => { breaks.slice(0,-1).forEach(b=>locks.add(b)); render(); };
+unfreeze.onclick = () => { locks.clear(); render(); };
 avgAll.onclick = () => { const on=avgPg.size<breaks.length; avgPg.clear();
   if(on) breaks.forEach((_,i)=>avgPg.add(i)); render(); };
 editMode.onchange = () => { document.body.classList.toggle('edit', editMode.checked); units.length && render(); };
@@ -313,6 +317,7 @@ function status(){
   // 全部頁面那顆是切換鈕，名稱要跟著現在的狀態走
   const allOn = breaks.length && avgPg.size>=breaks.length;
   avgAll.textContent = allOn ? '取消平均列高：全部頁面' : '平均列高：全部頁面';
+  freeze.disabled = locks.size>=breaks.length-1; unfreeze.disabled = !locks.size;
 }
 
 // 文字在 PDF 裡是以「基線」定位，但 CSS 的 top 是行框上緣，兩者相差多少要看實際字型的
@@ -332,6 +337,13 @@ function baseOff(sz,bold,serif){
   const off=(s.getBoundingClientRect().top-p.getBoundingClientRect().top)*72/96;
   p.remove();
   return bo[k]=off;
+}
+
+// 從第 pi 頁往後，到下一個鎖定的分頁點（含該頁）為止
+function segPages(pi){
+  const out=[];
+  for(let j=pi;j<breaks.length;j++){ out.push(j); if(locks.has(breaks[j])) break; }
+  return out;
 }
 
 function render(){
@@ -391,12 +403,16 @@ function render(){
     const b=document.createElement('div'); b.className='brk';
     const lk=locks.has(end);
     b.innerHTML=`第 ${pi+1} 頁　列高 ${lh.toFixed(1)}pt
-      <label><input type=checkbox data-a=1 ${avg?'checked':''}> 平均列高（本頁）</label>`
+      <label title="從本頁套用到下一個鎖定的分頁點為止"><input type=checkbox data-a=1 ${avg?'checked':''}> 平均列高（到下一個鎖定點）</label>`
       + (last?'':`　<button data-k=1 title="鎖住後這個分頁點不能移動">${lk?'🔒 已鎖':'🔓 鎖定'}</button>
         <button data-d="-1" ${lk?'disabled':''}>↓ 最後一列推到下頁</button>
         <button data-d="1" ${lk?'disabled':''}>↑ 下頁第一列拉上來</button>`);
     // 核取方塊走 change（點到 label 文字也算），按鈕走 click
-    b.querySelector('[data-a]').onchange=ev=>{ ev.target.checked?avgPg.add(pi):avgPg.delete(pi); render(); };
+    // 鎖定的分頁點是「段」的界線：從本頁一路套用到下一個鎖定點所在的那頁為止
+    b.querySelector('[data-a]').onchange=ev=>{
+      for(const j of segPages(pi)) ev.target.checked?avgPg.add(j):avgPg.delete(j);
+      render();
+    };
     b.onclick=ev=>{
       const t=ev.target.closest?.('button'); if(!t) return;
       if(t.dataset.k){ locks.has(end)?locks.delete(end):locks.add(end); return render(); }
