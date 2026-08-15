@@ -367,6 +367,13 @@ function render(){
     start=end;
   });
   status();
+  // 頁面容器落在半個像素上，裡面吸附過的線就會被反鋸齒攤成兩條；整頁往上挪回整數裝置像素。
+  const dpr=devicePixelRatio||1;
+  out.querySelectorAll('.page').forEach(p=>{
+    p.style.transform='';
+    const t=p.getBoundingClientRect().top;
+    p.style.transform=`translateY(${(Math.round(t*dpr)-t*dpr)/dpr}px)`;
+  });
   bindDrag(); bindEdit(); fitWidths();
 }
 
