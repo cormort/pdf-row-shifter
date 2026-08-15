@@ -364,12 +364,12 @@ function render(){
     // 少一列就稍微放寬、多一列就稍微壓縮，不會在頁尾留下一塊突兀的空白。
     const n=nlines(start,end);
     const last=pi===breaks.length-1;
-    // 非最後一頁一律撐到表身底端（不設放寬上限，否則行距小的表會在下方留一大塊空白）；
-    // 壓縮則最多到原行高的 60%。
-    // 非最後一頁一律平均撐滿；最後一頁預設維持原行高，勾了「平均」才跟著撐開
-    const avg = !last || avgPg.has(pi);
-    const lh = Math.max(minLH, avg ? (fillY-bodyTop)/Math.max(1,n-1)
-                                   : Math.min(LH,(bodyBot-bodyTop)/Math.max(1,n-1)));
+    // 勾「平均列高」＝這頁的列平均分佈到表身底端（bodyBot）；
+    // 沒勾時維持原行為：非最後一頁對齊「最滿那頁」的底端 fillY，最後一頁保留原行高。
+    const avg = avgPg.has(pi), sp=Math.max(1,n-1);
+    const lh = Math.max(minLH, avg ? (bodyBot-bodyTop)/sp
+                             : !last ? (fillY-bodyTop)/sp
+                                     : Math.min(LH,(bodyBot-bodyTop)/sp));
     let li=0;
     units.slice(start,end).forEach((u,i)=>{
       halves.forEach((h,k)=>{
@@ -388,13 +388,14 @@ function render(){
     const b=document.createElement('div'); b.className='brk';
     const lk=locks.has(end);
     b.innerHTML=`第 ${pi+1} 頁　列高 ${lh.toFixed(1)}pt
-      <label><input type=checkbox data-a=1 ${avg?'checked':''} ${last?'':'disabled'}> 平均列高（本頁）</label>`
+      <label><input type=checkbox data-a=1 ${avg?'checked':''}> 平均列高（本頁）</label>`
       + (last?'':`　<button data-k=1 title="鎖住後這個分頁點不能移動">${lk?'🔒 已鎖':'🔓 鎖定'}</button>
         <button data-d="-1" ${lk?'disabled':''}>↓ 最後一列推到下頁</button>
         <button data-d="1" ${lk?'disabled':''}>↑ 下頁第一列拉上來</button>`);
+    // 核取方塊走 change（點到 label 文字也算），按鈕走 click
+    b.querySelector('[data-a]').onchange=ev=>{ ev.target.checked?avgPg.add(pi):avgPg.delete(pi); render(); };
     b.onclick=ev=>{
-      const t=ev.target;
-      if(t.dataset.a){ t.checked?avgPg.add(pi):avgPg.delete(pi); return render(); }
+      const t=ev.target.closest?.('button'); if(!t) return;
       if(t.dataset.k){ locks.has(end)?locks.delete(end):locks.add(end); return render(); }
       const v=+t.dataset.d; if(v) move(pi,v);
     };
