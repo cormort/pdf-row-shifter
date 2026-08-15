@@ -215,14 +215,26 @@ function render(){
   out.innerHTML='';
   let start=0;
   breaks.forEach((end,pi)=>{
-    const d=document.createElement('div');   // 邏輯版面（對開時寬度是兩頁）
-    d.style.cssText=`position:absolute;left:0;top:0;width:${W}pt;height:${H}pt`;
-    frame.forEach(l=>d.insertAdjacentHTML('beforeend',
-      `<div class=ln style="left:${l.x}pt;top:${l.y}pt;width:${l.w||.5}pt;height:${l.h||.5}pt"></div>`));
+    // 對開時直接產生兩張實體頁，各自只放自己那半邊的東西。
+    // （不要用「雙頁寬圖層往左推＋overflow:hidden」——被遮住的元素仍算在版面寬度裡，
+    //   Chrome 列印時會為了「符合寬度」把整份縮小。）
+    const N=Math.round(W/pageW), sheet=document.createElement('div');
+    sheet.className='sheet';
+    const halves=[];
+    for(let k=0;k<N;k++){
+      const pageEl=document.createElement('div'); pageEl.className='page';
+      pageEl.style.cssText=`width:${pageW}pt;height:${H}pt`;
+      sheet.appendChild(pageEl); halves.push(pageEl);
+    }
+    frame.forEach(l=>{
+      const k=Math.min(N-1,Math.floor(l.x/pageW));
+      halves[k].insertAdjacentHTML('beforeend',
+        `<div class=ln style="left:${l.x-k*pageW}pt;top:${l.y}pt;width:${l.w||.5}pt;height:${l.h||.5}pt"></div>`);
+    });
     // 首頁用首頁頁首，續頁一律用第 2 頁的（含「（續）」），只換頁碼
     const hi = head[pi] ? pi : Math.min(1,head.length-1);
-    head[hi].forEach((r,ri)=>
-      d.insertAdjacentHTML('beforeend', segs(r, r.y, false, pi*Math.round(W/pageW)+1, 0, `h,${hi},${ri}`)));
+    head[hi].forEach((r,ri)=>halves.forEach((h,k)=>
+      h.insertAdjacentHTML('beforeend', segs(r, r.y, false, pi*N+1, 0, `h,${hi},${ri}`, k))));
     // 行距微調：除了最後一頁，各頁的列都平均分佈到原檔的表身底端，
     // 少一列就稍微放寬、多一列就稍微壓縮，不會在頁尾留下一塊突兀的空白。
     const n=nlines(start,end);
@@ -233,24 +245,17 @@ function render(){
                   : Math.max(LH*.6, (fillY-bodyTop)/Math.max(1,n-1));
     let li=0;
     units.slice(start,end).forEach((u,i)=>{
-      const e=document.createElement('div');
-      e.className='row'+(sel.has(start+i)?' sel':'')+(u.length>1?' grp':'');
-      // 框往上抬 0.8 行，讓可點擊範圍蓋住文字本身而不是它下面那行
-      e.style.cssText=`left:0;top:${bodyTop+li*lh-lh*.8}pt;width:100%;height:${u.length*lh}pt`;
-      e.draggable=true; e.dataset.i=start+i;
-      e.innerHTML=u.map((r,j)=>segs(r,0,true,0,j*lh+lh*.8,`u,${start+i},${j}`)).join('');
-      d.appendChild(e); li+=u.length;
+      halves.forEach((h,k)=>{
+        const e=document.createElement('div');
+        e.className='row'+(sel.has(start+i)?' sel':'')+(u.length>1?' grp':'');
+        // 框往上抬 0.8 行，讓可點擊範圍蓋住文字本身而不是它下面那行
+        e.style.cssText=`left:0;top:${bodyTop+li*lh-lh*.8}pt;width:100%;height:${u.length*lh}pt`;
+        e.draggable=true; e.dataset.i=start+i;
+        e.innerHTML=u.map((r,j)=>segs(r,0,true,0,j*lh+lh*.8,`u,${start+i},${j}`,k)).join('');
+        h.appendChild(e);
+      });
+      li+=u.length;
     });
-    // 對開時把這一版切回兩張實體 A4（各自裁切、右半內容往左推一個頁寬）
-    const N=Math.round(W/pageW), sheet=document.createElement('div');
-    sheet.className='sheet';
-    for(let k=0;k<N;k++){
-      const pageEl=document.createElement('div'); pageEl.className='page';
-      pageEl.style.cssText=`width:${pageW}pt;height:${H}pt`;
-      const inner=k?d.cloneNode(true):d;
-      inner.style.left=`${-k*pageW}pt`;
-      pageEl.appendChild(inner); sheet.appendChild(pageEl);
-    }
     out.appendChild(sheet);
     if(pi<breaks.length-1){
       const b=document.createElement('div'); b.className='brk';
@@ -282,11 +287,13 @@ function move(pi,d){
 }
 
 const esc=t=>t.replace(/</g,'&lt;');
-function segs(r, top, rel, pgno, dy=0, path=''){
+// half = 只輸出落在第幾個半頁的片段，x 也換算成該半頁的座標
+function segs(r, top, rel, pgno, dy=0, path='', half=0){
   // 頁首/頁尾裡孤立的純數字視為頁碼，換成新頁次（對開時左右各自算）
   const pn=s=>pgno&&r.length<=2&&/^\d+$/.test(s.t);
   const txt=s=>pn(s) ? String(pgno+Math.floor(s.x/pageW)) : s.t;
-  return r.map((s,k)=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} style="left:${s.x}pt;top:${(rel?dy:s.y)-s.sz}pt;font-size:${s.sz}pt;line-height:${s.sz}pt">${esc(txt(s))}</span>`).join('');
+  return r.map((s,k)=>[s,k]).filter(([s])=>Math.floor(s.x/pageW)===half)
+    .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} style="left:${s.x-half*pageW}pt;top:${(rel?dy:s.y)-s.sz}pt;font-size:${s.sz}pt;line-height:${s.sz}pt">${esc(txt(s))}</span>`).join('');
 }
 
 // ── 對齊：⌥ 點格選取（可多選），再按對齊鈕，像 PPT 對齊文字方塊 ──
