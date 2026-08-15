@@ -117,7 +117,8 @@ async function load(){
 // 文字依 y 分列（3pt 內同列），座標轉為由上而下
 function lines(c,H){
   const its=c.items.filter(i=>i.str.trim())
-    .map(i=>({x:i.transform[4], y:H-i.transform[5], t:i.str, sz:Math.hypot(i.transform[2],i.transform[3])}))
+    .map(i=>({x:i.transform[4], y:H-i.transform[5], t:i.str, w:i.width,
+              sz:Math.hypot(i.transform[2],i.transform[3])}))
     .sort((a,b)=>a.y-b.y);
   const out=[]; let cur=null;
   for(const it of its){
@@ -270,7 +271,7 @@ function render(){
   msg.textContent=`${nlines(0,units.length)} 列 / 每頁上限 ${perPage} 列` +
     (sel.size?`　已選 ${sel.size} 項`:'');
   bu.disabled=!undoS.length; br.disabled=!redoS.length;
-  bindDrag(); bindEdit();
+  bindDrag(); bindEdit(); fitWidths();
 }
 
 function move(pi,d){
@@ -293,7 +294,22 @@ function segs(r, top, rel, pgno, dy=0, path='', half=0){
   const pn=s=>pgno&&r.length<=2&&/^\d+$/.test(s.t);
   const txt=s=>pn(s) ? String(pgno+Math.floor(s.x/pageW)) : s.t;
   return r.map((s,k)=>[s,k]).filter(([s])=>Math.floor(s.x/pageW)===half)
-    .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} style="left:${s.x-half*pageW}pt;top:${(rel?dy:s.y)-s.sz}pt;font-size:${s.sz}pt;line-height:${s.sz}pt">${esc(txt(s))}</span>`).join('');
+    .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy:s.y)-s.sz}pt;font-size:${s.sz}pt;line-height:${s.sz}pt">${esc(txt(s))}</span>`).join('');
+}
+
+// 系統字型的字寬跟原檔內嵌字型不同，數字排出來會比原本寬、壓到欄線上。
+// 量完之後把每段橫向壓回原檔寬度（只縮不放，從左緣起算，右對齊的數字才不會跑掉）。
+function fitWidths(){
+  const els=[...out.querySelectorAll('.seg[data-w]')];
+  const scale=els.map(el=>{
+    const w0=+el.dataset.w, w1=el.getBoundingClientRect().width*72/96;
+    return w0>0 && w1>w0*1.005 ? w0/w1 : 0;                 // 先全部量完再寫，避免反覆重排
+  });
+  els.forEach((el,i)=>{ if(scale[i]){
+    el.style.display='inline-block';
+    el.style.transformOrigin='left top';
+    el.style.transform=`scaleX(${scale[i].toFixed(4)})`;
+  }});
 }
 
 // ── 對齊：⌥ 點格選取（可多選），再按對齊鈕，像 PPT 對齊文字方塊 ──
@@ -367,7 +383,8 @@ function bindEdit(){
 function setSeg(p,t){
   const [k,a,b,c]=p.split(',');
   const owner = k==='u' ? units[a] : head[a];
-  owner[b] = Object.assign(owner[b].map((s,i)=>i==c?{...s,t}:s), {y:owner[b].y});
+  // 改過字之後原本的寬度就不適用了，拿掉才不會把新字硬壓成舊寬度
+  owner[b] = Object.assign(owner[b].map((s,i)=>i==c?{...s,t,w:0}:s), {y:owner[b].y});
 }
 
 // ── 選取與群組：選連續的 2 列以上組成群組，之後一起搬、不會被分頁拆開 ──
