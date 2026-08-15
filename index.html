@@ -219,8 +219,10 @@ function render(){
     // 少一列就稍微放寬、多一列就稍微壓縮，不會在頁尾留下一塊突兀的空白。
     const n=nlines(start,end);
     const last=pi===breaks.length-1;
+    // 非最後一頁一律撐到表身底端（不設放寬上限，否則行距小的表會在下方留一大塊空白）；
+    // 壓縮則最多到原行高的 60%。
     const lh=last ? Math.min(LH,(bottomY-bodyTop)/Math.max(1,n-1))
-                  : clamp((fillY-bodyTop)/Math.max(1,n-1), LH*.6, LH*1.2);
+                  : Math.max(LH*.6, (fillY-bodyTop)/Math.max(1,n-1));
     let li=0;
     units.slice(start,end).forEach((u,i)=>{
       const e=document.createElement('div');
