@@ -23,8 +23,10 @@
     @page{size:A4;margin:0}
     body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     #ctl,.brk{display:none}
-    .sheet{display:block;gap:0;margin:0}
-    .page{box-shadow:none;margin:0;break-after:page}
+    /* 這裡少一項就會每頁多吐一張空白紙：頁面盒剛好等於 A4，外圍任何留白都會溢位 */
+    #out{padding:0;margin:0}
+    .sheet{display:block;gap:0;margin:0;padding:0}
+    .page{box-shadow:none;margin:0;break-after:page;break-inside:avoid}
     .sheet:last-child .page:last-child{break-after:avoid}   /* 不然結尾會多一張空白頁 */
   }
 </style>
