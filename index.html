@@ -241,6 +241,15 @@ onkeydown = e => {
 const nlines=(a,b)=>units.slice(a,b).reduce((n,u)=>n+u.length,0);
 const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
 const th=l=>l.t||.5;
+const snapPx=pt=>Math.round(pt*96/72);       // pt → 整數 CSS px
+
+// 線條的粗細方向吸附到整數像素（長度方向維持原值，不影響接合）
+function lnBox(l,k){
+  const t=th(l), x=l.x-k*pageW;
+  return l.w
+    ? `left:${x}pt;top:${snapPx(l.y-t/2)}px;width:${l.w}pt;height:${Math.max(1,snapPx(t))}px`
+    : `left:${snapPx(x-t/2)}px;top:${l.y}pt;width:${Math.max(1,snapPx(t))}px;height:${l.h}pt`;
+}
 function status(){
   msg.textContent=`${nlines(0,units.length)} 列 / 每頁上限 ${perPage} 列`
     + (sel.size?`　已選 ${sel.size} 列`:'') + (selSeg.size?`　已選 ${selSeg.size} 格`:'');
@@ -284,8 +293,9 @@ function render(){
     frame.forEach(l=>{
       const k=Math.min(N-1,Math.floor(l.x/pageW));
       halves[k].insertAdjacentHTML('beforeend',
-        // l.x / l.y 是線的中心；畫成方塊時要往回退半個線寬，否則整條線會偏移
-        `<div class=ln style="left:${l.x-k*pageW-(l.w?0:th(l)/2)}pt;top:${l.y-(l.h?0:th(l)/2)}pt;width:${l.w||th(l)}pt;height:${l.h||th(l)}pt"></div>`);
+        // l.x / l.y 是線的中心，畫成方塊要退半個線寬；粗細方向再吸附到整數像素，
+        // 否則落在半個像素上的線會被反鋸齒糊成兩三個像素，看起來比別條粗。
+        `<div class=ln style="${lnBox(l, k)}"></div>`);
     });
     // 首頁用首頁頁首，續頁一律用第 2 頁的（含「（續）」），只換頁碼
     const hi = head[pi] ? pi : Math.min(1,head.length-1);
