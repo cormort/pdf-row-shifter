@@ -1,0 +1,400 @@
+<meta charset="utf-8">
+<title>PDF 資料列分頁調整</title>
+<style>
+  body{font:14px/1.6 -apple-system,"PingFang TC",sans-serif;margin:0;background:#eee}
+  #ctl{position:sticky;top:0;background:#f5f5f5;padding:8px 12px;z-index:10;border-bottom:1px solid #ccc}
+  #out{padding:12px 0}
+  .page{background:#fff;box-shadow:0 1px 4px #0003;position:relative;overflow:hidden;flex:none}
+  .sheet{display:flex;gap:4px;justify-content:center;margin-bottom:8px}
+  .seg,.row{position:absolute;white-space:pre;font-family:"PingFang TC","Heiti TC",serif}
+  .row{cursor:grab}
+  .row:hover{outline:1px dashed #4285f4;background:#e8f0fe80}
+  .row.sel{background:#fff3cd}
+  .row.grp{box-shadow:inset 2px 0 0 #34a853}
+  .seg[data-p]{cursor:text}
+  .seg.editing{outline:1px solid #4285f4;background:#fff;z-index:5;min-width:1em}
+  .seg.pick{outline:1px solid #ea4335;background:#fce8e6;z-index:4}
+  @media print{.seg.pick{outline:none;background:none}}
+  @media print{.row.sel{background:none}.row.grp{box-shadow:none}}
+  .ln{position:absolute;background:#000;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .brk{display:flex;gap:6px;justify-content:center;align-items:center;padding:4px;color:#555;font-size:12px}
+  button{font:inherit;padding:2px 8px;cursor:pointer}
+  @media print{
+    @page{size:A4;margin:0}
+    body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    #ctl,.brk{display:none}
+    .sheet{display:block;gap:0;margin:0}
+    .page{box-shadow:none;margin:0;break-after:page}
+    .sheet:last-child .page:last-child{break-after:avoid}   /* 不然結尾會多一張空白頁 */
+  }
+</style>
+
+<div id="ctl">
+  <input type="file" id="f" accept="application/pdf">
+  <label><input type="checkbox" id="spread"> 對開表（兩頁併一版）</label>
+  <button id="bu" onclick="undo()">↩ 復原</button>
+  <button id="br" onclick="redo()">↪ 重做</button>
+  <button onclick="group()">組成群組</button>
+  <button onclick="ungroup()">解除群組</button>
+  <button onclick="sel.clear();render()">取消選取</button>
+  <button onclick="print()">列印 / 存成 PDF</button>
+  <span style="margin-left:12px;color:#666">對齊(⌥點格選取)</span>
+  <button onclick="align('l')" title="靠左對齊">⇤</button>
+  <button onclick="align('c')" title="水平置中">⇔</button>
+  <button onclick="align('r')" title="靠右對齊">⇥</button>
+  <button onclick="align('d')" title="水平均分">⇹</button>
+  <button onclick="align('col')" title="依欄線置中">⊞</button>
+  <span id="msg"></span>
+</div>
+<div id="out"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+const U=pdfjsLib; U.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// 版面（固定，不隨資料跑）：W/H 頁面尺寸、frame 天地線與欄線、head 固定頁首、bodyTop/LH 表身格線
+// units[i] = 一個可搬動單位（1 列，或群組後的多列）；breaks 以 unit 為索引
+let W=595,pageW=595,H=842, frame=[], head=[], rows=[], units=[], breaks=[], bodyTop=0, bottomY=800, fillY=800, LH=7, perPage=1;
+const sel=new Set();
+
+let buf=null;
+f.onchange = e => { buf=e.target.files[0]; load(); };
+spread.onchange = () => buf && load();
+
+async function load(){
+  const doc = await U.getDocument(await buf.arrayBuffer()).promise;
+  // 對開：奇數頁是左半、偶數頁是右半，兩頁併成一個「版」（右半的 x 平移一個頁寬）
+  const N = spread.checked ? 2 : 1;
+  const all=[];
+  for(let p=1;p<=doc.numPages;p+=N){
+    let txt=[], fr=[];
+    for(let k=0;k<N && p+k<=doc.numPages;k++){
+      const pg=await doc.getPage(p+k), vp=pg.getViewport({scale:1});
+      pageW=vp.width; H=vp.height;
+      const dx=k*pageW;
+      txt.push(...lines(await pg.getTextContent(), H).map(r=>shift(r,dx)));
+      if(p===1) fr.push(...(await getFrame(pg,H)).map(l=>({...l, x:l.x+dx})));
+    }
+    W = pageW*N;
+    if(p===1) frame=fr;
+    all.push(merge(txt));
+  }
+  // 固定頁首 = 表頭橫線以上的內容（首頁一份、續頁一份，原樣不動）
+  const hy = spanning(frame);
+  bottomY = hy[hy.length-1];
+  // 表頭那幾條橫線彼此靠得近，資料區則是一大段空白；斷在第一個大間距處
+  let si=0; while(si+1<hy.length-1 && hy[si+1]-hy[si]<100) si++;
+  const sep = hy[si];
+  head = all.map(pg=>pg.filter(r=>r.y<=sep || r.y>bottomY));   // 地線以下（頁碼）也算固定
+
+  rows=[]; units=[]; breaks=[]; sel.clear(); undoS=[]; redoS=[];
+  all.forEach(pg=>{
+    const body=pg.filter(r=>r.y>sep && r.y<=bottomY);
+    rows.push(...body); units.push(...body.map(r=>[r]));
+    breaks.push(units.length);
+  });
+
+  // 表身格線：起始 y 與行高取自原檔
+  bodyTop = rows[0].y;
+  const gaps = rows.slice(1,40).map((r,i)=>r.y-rows[i].y).filter(g=>g>1);
+  LH = gaps.sort((a,b)=>a-b)[Math.floor(gaps.length/2)] || 7;
+  // 表身底端 = 原檔最滿的一頁最後一列的位置，用它當各頁對齊的基準
+  const maxLines = Math.max(...breaks.map((e,i)=>nlines(i?breaks[i-1]:0, e)));
+  fillY = Math.min(bottomY, bodyTop + (maxLines-1)*LH);
+  // ponytail: 行距最多壓到原本的 60%，再多就不好看了；要更緊改這個係數
+  perPage = Math.floor((bottomY-bodyTop)/(LH*.6))+1;
+  render();
+};
+
+// 文字依 y 分列（3pt 內同列），座標轉為由上而下
+function lines(c,H){
+  const its=c.items.filter(i=>i.str.trim())
+    .map(i=>({x:i.transform[4], y:H-i.transform[5], t:i.str, sz:Math.hypot(i.transform[2],i.transform[3])}))
+    .sort((a,b)=>a.y-b.y);
+  const out=[]; let cur=null;
+  for(const it of its){
+    if(!cur || it.y-cur.y>3){ cur={y:it.y, segs:[]}; out.push(cur); }
+    cur.segs.push(it);
+  }
+  return out.map(r=>Object.assign(r.segs.sort((a,b)=>a.x-b.x),{y:r.y}));
+}
+const shift=(r,dx)=>Object.assign(r.map(s=>({...s,x:s.x+dx})),{y:r.y});
+// 對開時左右兩半各自分好列，這裡再依 y 把同一列的左右內容併起來
+function merge(rs){
+  rs.sort((a,b)=>a.y-b.y);
+  const out=[];
+  for(const r of rs){
+    const p=out[out.length-1];
+    if(p && r.y-p.y<3) p.push(...r);
+    else out.push(Object.assign([...r],{y:r.y}));
+  }
+  return out.map(r=>Object.assign(r.sort((a,b)=>a.x-b.x),{y:r.y}));
+}
+
+// 取頁面框線（水平/垂直的直線段）
+async function getFrame(pg,H){
+  const ops=await pg.getOperatorList(), OPS=U.OPS, out=[];
+  // 路徑座標在目前的 CTM 之下，得自己追 transform / save / restore
+  let m=[1,0,0,1,0,0], stack=[];
+  const mul=(a,b)=>[a[0]*b[0]+a[2]*b[1], a[1]*b[0]+a[3]*b[1],
+                    a[0]*b[2]+a[2]*b[3], a[1]*b[2]+a[3]*b[3],
+                    a[0]*b[4]+a[2]*b[5]+a[4], a[1]*b[4]+a[3]*b[5]+a[5]];
+  const app=(x,y)=>[m[0]*x+m[2]*y+m[4], m[1]*x+m[3]*y+m[5]];
+  for(let i=0;i<ops.fnArray.length;i++){
+    const fn=ops.fnArray[i];
+    if(fn===OPS.save){ stack.push(m); continue; }
+    if(fn===OPS.restore){ m=stack.pop()||m; continue; }
+    if(fn===OPS.transform){ m=mul(m, ops.argsArray[i]); continue; }
+    if(fn!==OPS.constructPath) continue;
+    const [cmds,raw]=ops.argsArray[i];
+    const co=[]; for(let j=0;j<raw.length;j+=2){ const p=app(raw[j],raw[j+1]); co.push(p[0],p[1]); }
+    let k=0,px=0,py=0;
+    for(const cm of cmds){
+      if(cm===OPS.moveTo){ px=co[k++]; py=co[k++]; }
+      else if(cm===OPS.lineTo){
+        const x=co[k++], y=co[k++];
+        if(Math.abs(y-py)<.5) out.push({x:Math.min(px,x), y:H-y, w:Math.abs(x-px), h:0});
+        else if(Math.abs(x-px)<.5) out.push({x, y:H-Math.max(py,y), w:0, h:Math.abs(y-py)});
+        px=x; py=y;
+      }
+      else if(cm===OPS.rectangle){
+        const [x0,y0]=app(raw[k],raw[k+1]), [x1,y1]=app(raw[k]+raw[k+2],raw[k+1]+raw[k+3]);
+        k+=4;
+        const x=Math.min(x0,x1), w=Math.abs(x1-x0), t=H-Math.max(y0,y1), h=Math.abs(y1-y0);
+        px=x1; py=y1;
+        // 這類 PDF 的框線是「很扁的矩形」；長寬都大的是色塊（整頁底色），不是線
+        if(Math.min(w,h)>2) continue;
+        if(h<=2) out.push({x,y:t+h/2,w,h:0}); else out.push({x:x+w/2,y:t,w:0,h});
+        continue; }
+      else k+=cm===OPS.curveTo?6:2;
+    }
+  }
+  // 只留細長的框線，濾掉整頁底色之類的大色塊
+  return out.filter(l=>(l.w||l.h)>2);
+}
+
+// 橫貫整個表寬的橫線 y（表頭裡的短分隔線不算），由上而下
+function spanning(fr){
+  const hs=fr.filter(l=>!l.h);
+  if(!hs.length) return [0,H];
+  const L=Math.min(...hs.map(l=>l.x)), R=Math.max(...hs.map(l=>l.x+l.w));
+  const by=new Map();
+  hs.forEach(l=>{ const k=Math.round(l.y); (by.get(k)||by.set(k,[]).get(k)).push([l.x,l.x+l.w]); });
+  const full=[...by].filter(([y,segs])=>{
+    let cov=0, end=-1e9;
+    segs.sort((a,b)=>a[0]-b[0]).forEach(([a,b])=>{ cov+=Math.max(0,b-Math.max(a,end)); end=Math.max(end,b); });
+    return cov >= (R-L)*.9;
+  }).map(([y])=>y).sort((a,b)=>a-b);
+  return full.length>1 ? full : [...by.keys()].sort((a,b)=>a-b);
+}
+
+// ── 復原 / 重做：每次動作前存一份 units+breaks 快照（列本身唯讀，淺拷貝就夠） ──
+let undoS=[], redoS=[];
+const snap=()=>({u:units.map(u=>[...u]), b:breaks.slice(), h:head.map(p=>[...p])});
+const push=()=>{ undoS.push(snap()); redoS=[]; if(undoS.length>100) undoS.shift(); };
+function restore(s){ units=s.u; breaks=s.b; head=s.h; sel.clear(); render(); }
+function undo(){ if(!undoS.length) return; redoS.push(snap()); restore(undoS.pop()); }
+function redo(){ if(!redoS.length) return; undoS.push(snap()); restore(redoS.pop()); }
+onkeydown = e => {
+  if(!(e.metaKey||e.ctrlKey) || e.key.toLowerCase()!=='z') return;
+  e.preventDefault(); e.shiftKey ? redo() : undo();
+};
+
+const nlines=(a,b)=>units.slice(a,b).reduce((n,u)=>n+u.length,0);
+const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
+
+function render(){
+  out.innerHTML='';
+  let start=0;
+  breaks.forEach((end,pi)=>{
+    const d=document.createElement('div');   // 邏輯版面（對開時寬度是兩頁）
+    d.style.cssText=`position:absolute;left:0;top:0;width:${W}pt;height:${H}pt`;
+    frame.forEach(l=>d.insertAdjacentHTML('beforeend',
+      `<div class=ln style="left:${l.x}pt;top:${l.y}pt;width:${l.w||.5}pt;height:${l.h||.5}pt"></div>`));
+    // 首頁用首頁頁首，續頁一律用第 2 頁的（含「（續）」），只換頁碼
+    const hi = head[pi] ? pi : Math.min(1,head.length-1);
+    head[hi].forEach((r,ri)=>
+      d.insertAdjacentHTML('beforeend', segs(r, r.y, false, pi*Math.round(W/pageW)+1, 0, `h,${hi},${ri}`)));
+    // 行距微調：除了最後一頁，各頁的列都平均分佈到原檔的表身底端，
+    // 少一列就稍微放寬、多一列就稍微壓縮，不會在頁尾留下一塊突兀的空白。
+    const n=nlines(start,end);
+    const last=pi===breaks.length-1;
+    const lh=last ? Math.min(LH,(bottomY-bodyTop)/Math.max(1,n-1))
+                  : clamp((fillY-bodyTop)/Math.max(1,n-1), LH*.6, LH*1.2);
+    let li=0;
+    units.slice(start,end).forEach((u,i)=>{
+      const e=document.createElement('div');
+      e.className='row'+(sel.has(start+i)?' sel':'')+(u.length>1?' grp':'');
+      // 框往上抬 0.8 行，讓可點擊範圍蓋住文字本身而不是它下面那行
+      e.style.cssText=`left:0;top:${bodyTop+li*lh-lh*.8}pt;width:100%;height:${u.length*lh}pt`;
+      e.draggable=true; e.dataset.i=start+i;
+      e.innerHTML=u.map((r,j)=>segs(r,0,true,0,j*lh+lh*.8,`u,${start+i},${j}`)).join('');
+      d.appendChild(e); li+=u.length;
+    });
+    // 對開時把這一版切回兩張實體 A4（各自裁切、右半內容往左推一個頁寬）
+    const N=Math.round(W/pageW), sheet=document.createElement('div');
+    sheet.className='sheet';
+    for(let k=0;k<N;k++){
+      const pageEl=document.createElement('div'); pageEl.className='page';
+      pageEl.style.cssText=`width:${pageW}pt;height:${H}pt`;
+      const inner=k?d.cloneNode(true):d;
+      inner.style.left=`${-k*pageW}pt`;
+      pageEl.appendChild(inner); sheet.appendChild(pageEl);
+    }
+    out.appendChild(sheet);
+    if(pi<breaks.length-1){
+      const b=document.createElement('div'); b.className='brk';
+      b.innerHTML=`分頁 ${pi+1}/${pi+2}
+        <button data-d="-1">↓ 最後一列推到下頁</button>
+        <button data-d="1">↑ 下頁第一列拉上來</button>`;
+      b.onclick=ev=>{ const v=+ev.target.dataset.d; if(v) move(pi,v); };
+      out.appendChild(b);
+    }
+    start=end;
+  });
+  msg.textContent=`${nlines(0,units.length)} 列 / 每頁上限 ${perPage} 列` +
+    (sel.size?`　已選 ${sel.size} 項`:'');
+  bu.disabled=!undoS.length; br.disabled=!redoS.length;
+  bindDrag(); bindEdit();
+}
+
+function move(pi,d){
+  const prev = pi===0?0:breaks[pi-1];
+  if(d<0 && breaks[pi]-1<=prev) return;                        // 本頁不能空
+  if(d>0){
+    if(breaks[pi]+1>breaks[pi+1]) return;
+    if(nlines(prev,breaks[pi]+1)>perPage) return;              // 不能超出地線
+  }
+  push();
+  breaks[pi]+=d;
+  breaks=breaks.filter((b,i)=>b>(i?breaks[i-1]:0));            // 搬空的頁就刪掉，不留空白頁
+  render();
+}
+
+const esc=t=>t.replace(/</g,'&lt;');
+function segs(r, top, rel, pgno, dy=0, path=''){
+  // 頁首/頁尾裡孤立的純數字視為頁碼，換成新頁次（對開時左右各自算）
+  const pn=s=>pgno&&r.length<=2&&/^\d+$/.test(s.t);
+  const txt=s=>pn(s) ? String(pgno+Math.floor(s.x/pageW)) : s.t;
+  return r.map((s,k)=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} style="left:${s.x}pt;top:${(rel?dy:s.y)-s.sz}pt;font-size:${s.sz}pt;line-height:${s.sz}pt">${esc(txt(s))}</span>`).join('');
+}
+
+// ── 對齊：⌥ 點格選取（可多選），再按對齊鈕，像 PPT 對齊文字方塊 ──
+const selSeg=new Set();
+const PT=el=>el.getBoundingClientRect().width / (out.querySelector('.page').getBoundingClientRect().width/pageW);
+
+function align(mode){
+  // 對開時同一格會有左右兩份 DOM（右半是複本），依 data-p 去重
+  const seen=new Set(), els=[...out.querySelectorAll('.seg.pick')]
+    .filter(el=>!seen.has(el.dataset.p) && seen.add(el.dataset.p));
+  if(els.length<(mode==='col'?1:2)) return alert('⌥（Option）點選要對齊的格子，至少兩格');
+  const box=els.map(el=>({p:el.dataset.p, x:seg0(el.dataset.p).x, w:PT(el)}));
+  const L=Math.min(...box.map(b=>b.x)), R=Math.max(...box.map(b=>b.x+b.w));
+  push();
+  if(mode==='l') box.forEach(b=>setX(b.p, L));
+  if(mode==='r') box.forEach(b=>setX(b.p, R-b.w));
+  if(mode==='c') box.forEach(b=>setX(b.p, (L+R)/2-b.w/2));
+  if(mode==='d'){                                  // 中心點等距分佈，頭尾不動
+    box.sort((a,b)=>a.x-b.x);
+    const c0=box[0].x+box[0].w/2, cN=box.at(-1).x+box.at(-1).w/2;
+    box.forEach((b,i)=>setX(b.p, c0+(cN-c0)*i/(box.length-1)-b.w/2));
+  }
+  if(mode==='col') box.forEach(b=>{                // 以左右兩條欄線置中
+    const vs=frame.filter(l=>l.h).map(l=>l.x).sort((a,b)=>a-b);
+    const lo=Math.max(...vs.filter(v=>v<=b.x+2), 0), hi=Math.min(...vs.filter(v=>v>=b.x+b.w-2), W);
+    setX(b.p, (lo+hi)/2-b.w/2);
+  });
+  selSeg.clear(); render();
+}
+const seg0=p=>{ const [k,a,b,c]=p.split(','); return (k==='u'?units[a][b]:head[a][b])[c]; };
+function setX(p,x){
+  const [k,a,b,c]=p.split(',');
+  const owner = k==='u' ? units[a] : head[a];
+  owner[b] = Object.assign(owner[b].map((s,i)=>i==c?{...s,x}:s), {y:owner[b].y});
+}
+
+// ── 就地編輯：雙擊任一格改字，Enter 或點別處存檔、Esc 放棄 ──
+function bindEdit(){
+  out.querySelectorAll('.seg[data-p]').forEach(el=>{
+    if(selSeg.has(el.dataset.p)) el.classList.add('pick');
+    el.onclick=ev=>{
+      if(!ev.altKey) return;                       // 一般點擊仍然是選整列
+      ev.stopPropagation(); ev.preventDefault();
+      selSeg.has(el.dataset.p) ? selSeg.delete(el.dataset.p) : selSeg.add(el.dataset.p);
+      el.classList.toggle('pick');
+      msg.textContent=`已選 ${selSeg.size} 格`;
+    };
+    el.ondblclick=ev=>{
+      ev.stopPropagation();
+      const row=el.closest('.row'); if(row) row.draggable=false;
+      const old=el.textContent;
+      el.contentEditable='true'; el.classList.add('editing'); el.focus();
+      getSelection().selectAllChildren(el);
+      const done=ok=>{
+        el.contentEditable='false'; el.classList.remove('editing');
+        const t=el.textContent;
+        if(!ok || t===old){ el.textContent=old; if(row) row.draggable=true; return; }
+        push(); setSeg(el.dataset.p, t); render();
+      };
+      el.onblur=()=>done(true);
+      el.onkeydown=e=>{
+        e.stopPropagation();
+        if(e.key==='Enter'){ e.preventDefault(); el.blur(); }
+        if(e.key==='Escape'){ el.textContent=old; el.blur(); }
+      };
+    };
+  });
+}
+// data-p = "u,單位,行,片段" 或 "h,頁,列,片段"
+// 改字時整列換成新物件（copy-on-write），舊快照才留得住原文，復原才有效
+function setSeg(p,t){
+  const [k,a,b,c]=p.split(',');
+  const owner = k==='u' ? units[a] : head[a];
+  owner[b] = Object.assign(owner[b].map((s,i)=>i==c?{...s,t}:s), {y:owner[b].y});
+}
+
+// ── 選取與群組：選連續的 2 列以上組成群組，之後一起搬、不會被分頁拆開 ──
+function group(){
+  const ix=[...sel].sort((a,b)=>a-b);
+  if(ix.length<2) return alert('請先選兩列以上（點一下起點，Shift 點終點）');
+  push();
+  const merged=[].concat(...units.slice(ix[0],ix[0]+ix.length));
+  units.splice(ix[0], ix.length, merged);
+  breaks=breaks.map(b=>b>ix[0] ? Math.max(ix[0]+1, b-(ix.length-1)) : b);
+  sel.clear(); render();
+}
+function ungroup(){
+  if(!sel.size) return;
+  push();
+  [...sel].sort((a,b)=>b-a).forEach(i=>{
+    const u=units[i]; if(u.length<2) return;
+    units.splice(i,1,...u.map(r=>[r]));
+    breaks=breaks.map(b=>b>i ? b+(u.length-1) : b);
+  });
+  sel.clear(); render();
+}
+
+let dragI=null, lastI=null;
+function bindDrag(){
+  out.querySelectorAll('.row').forEach(e=>{
+    const i=+e.dataset.i;
+    // 選取一律是連續範圍：點一下設起點，Shift 點另一列拉出整段
+    e.onclick=ev=>{
+      sel.clear();
+      if(ev.shiftKey && lastI!==null)
+        for(let k=Math.min(i,lastI);k<=Math.max(i,lastI);k++) sel.add(k);
+      else { sel.add(i); lastI=i; }
+      render();
+    };
+    e.ondragstart=()=>dragI=i;
+    e.ondragover=ev=>ev.preventDefault();
+    e.ondrop=ev=>{
+      ev.preventDefault();
+      if(dragI===null||i===dragI) return;
+      push();
+      const [u]=units.splice(dragI,1); units.splice(i,0,u);
+      sel.clear(); render();
+    };
+  });
+}
+</script>
