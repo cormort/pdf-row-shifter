@@ -43,6 +43,7 @@
 <div id="ctl">
   <input type="file" id="f" accept="application/pdf">
   <label><input type="checkbox" id="spread"> 對開表（兩頁併一版）</label>
+  <label title="表身上下留白，避免字壓到天地線">邊界 <input type="number" id="pad" value="2" min="0" max="30" step="1" style="width:3.5em"> pt</label>
   <label><input type="checkbox" id="editMode"> 編輯（點格子改字）</label>
   <button id="bu" onclick="undo()" title="復原">↩ 復原</button>
   <button id="br" onclick="redo()" title="重做">↪ 重做</button>
@@ -72,12 +73,13 @@ bu.title=`復原 (${KMOD}Z)`; br.title=`重做 (${MAC?'⇧⌘Z':'Ctrl+Shift+Z'})
 
 // 版面（固定，不隨資料跑）：W/H 頁面尺寸、frame 天地線與欄線、head 固定頁首、bodyTop/LH 表身格線
 // units[i] = 一個可搬動單位（1 列，或群組後的多列）；breaks 以 unit 為索引
-let W=595,pageW=595,H=842, frame=[], head=[], rows=[], units=[], breaks=[], bodyTop=0, bottomY=800, fillY=800, LH=7, perPage=1;
+let W=595,pageW=595,H=842, frame=[], head=[], rows=[], units=[], breaks=[], PAD=2, topY=0, bodyTop=0, bodyBot=800, bottomY=800, fillY=800, LH=7, perPage=1;
 const sel=new Set();
 
 let buf=null;
 f.onchange = e => { buf=e.target.files[0]; load(); };
 spread.onchange = () => buf && load();
+pad.oninput = () => { PAD=+pad.value||0; units.length && relayout(); };
 editMode.onchange = () => { document.body.classList.toggle('edit', editMode.checked); units.length && render(); };
 
 async function load(){
@@ -116,18 +118,25 @@ async function load(){
   });
 
   // 表身格線：起始 y 與行高取自原檔
-  bodyTop = rows[0].y;
+  topY = rows[0].y;
   const gaps = rows.slice(1,40).map((r,i)=>r.y-rows[i].y).filter(g=>g>1);
   LH = gaps.sort((a,b)=>a-b)[Math.floor(gaps.length/2)] || 7;
-  // 表身底端 = 原檔最滿的一頁最後一列的位置，用它當各頁對齊的基準
-  const maxLines = Math.max(...breaks.map((e,i)=>nlines(i?breaks[i-1]:0, e)));
-  fillY = Math.min(bottomY, bodyTop + (maxLines-1)*LH);
-  // ponytail: 行距最多壓到原本的 60%，再多就不好看了；要更緊改這個係數
-  perPage = Math.floor((bottomY-bodyTop)/(LH*.6))+1;
   // 紙張尺寸跟著來源 PDF 走；寫死 A4 的話，非 A4 的原稿列印時會被整份縮小
   pagesize.textContent=`@page{size:${pageW}pt ${H}pt;margin:0}`;
-  render();
+  relayout();
 };
+
+// 上下各留 PAD 的邊界，字才不會壓在天地線／表頭線上；改邊界只要重算這幾個值再重畫
+function relayout(){
+  bodyTop = topY + PAD;
+  bodyBot = bottomY - PAD;
+  // 表身底端 = 原檔最滿的一頁最後一列的位置，用它當各頁對齊的基準
+  const maxLines = Math.max(...breaks.map((e,i)=>nlines(i?breaks[i-1]:0, e)));
+  fillY = Math.min(bodyBot, bodyTop + (maxLines-1)*LH);
+  // ponytail: 行距最多壓到原本的 60%，再多就不好看了；要更緊改這個係數
+  perPage = Math.floor((bodyBot-bodyTop)/(LH*.6))+1;
+  render();
+}
 
 // 文字依 y 分列（3pt 內同列），座標轉為由上而下
 // 從字型名稱取粗體與襯線與否（例：TimesNewRomanPS-BoldMT → 粗體＋襯線）
@@ -339,7 +348,7 @@ function render(){
     const last=pi===breaks.length-1;
     // 非最後一頁一律撐到表身底端（不設放寬上限，否則行距小的表會在下方留一大塊空白）；
     // 壓縮則最多到原行高的 60%。
-    const lh=last ? Math.min(LH,(bottomY-bodyTop)/Math.max(1,n-1))
+    const lh=last ? Math.min(LH,(bodyBot-bodyTop)/Math.max(1,n-1))
                   : Math.max(LH*.6, (fillY-bodyTop)/Math.max(1,n-1));
     let li=0;
     units.slice(start,end).forEach((u,i)=>{
