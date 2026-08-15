@@ -208,7 +208,39 @@ async function getFrame(pg,H){
     }
   }
   // 只留細長的框線，濾掉整頁底色之類的大色塊
-  return out.filter(l=>(l.w||l.h)>2);
+  return mergeLines(out.filter(l=>(l.w||l.h)>2));
+}
+
+// 有些表的天地線是兩道細線相接畫成的（例：y=84 與 85 各 1pt，其實是一條 2pt）。
+// 先把厚度相接／重疊、而且長度方向有交集的同向線併起來，之後吸附像素才不會裂成兩條。
+// 真正有間隙的雙線（例如 hairline 畫的雙橫線）不會被併，維持原樣。
+function mergeLines(ls){
+  const out=[];
+  for(const ori of [0,1]){                       // 0=水平 1=垂直
+    const g=ls.filter(l=>(ori? l.h : l.w)>0).map(l=>({...l}));
+    const key=l=>ori? l.x : l.y;                 // 粗細方向的中心
+    const t=l=>l.t||.5;
+    g.sort((a,b)=>key(a)-key(b));
+    const used=new Array(g.length).fill(false);
+    g.forEach((a,i)=>{
+      if(used[i]) return;
+      let lo=key(a)-t(a)/2, hi=key(a)+t(a)/2;
+      let s=ori? a.y : a.x, e=s+(ori? a.h : a.w);
+      for(let j=i+1;j<g.length;j++){
+        const b=g[j]; if(used[j]) continue;
+        const blo=key(b)-t(b)/2, bhi=key(b)+t(b)/2;
+        if(blo>hi+.01) break;                    // 已排序，再往後只會更遠
+        const bs=ori? b.y : b.x, be=bs+(ori? b.h : b.w);
+        if(be<s-.01 || bs>e+.01) continue;       // 長度方向沒交集，不是同一條
+        lo=Math.min(lo,blo); hi=Math.max(hi,bhi); s=Math.min(s,bs); e=Math.max(e,be);
+        used[j]=true;
+      }
+      used[i]=true;
+      const c=(lo+hi)/2, th=hi-lo;
+      out.push(ori? {x:c, y:s, w:0, h:e-s, t:th} : {x:s, y:c, w:e-s, h:0, t:th});
+    });
+  }
+  return out;
 }
 
 // 橫貫整個表寬的橫線 y（表頭裡的短分隔線不算），由上而下
