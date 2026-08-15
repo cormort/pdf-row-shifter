@@ -1,7 +1,7 @@
 <meta charset="utf-8">
 <title>PDF 資料列分頁調整</title>
 <style>
-  body{font:14px/1.6 -apple-system,"PingFang TC",sans-serif;margin:0;background:#eee}
+  body{font:14px/1.6 -apple-system,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif;margin:0;background:#eee}
   #ctl{position:sticky;top:0;background:#f5f5f5;padding:8px 12px;z-index:10;border-bottom:1px solid #ccc}
   #out{padding:12px 0}
   /* contain:paint 是必要的：對開時內層有兩頁寬，只用 overflow:hidden 列印仍會被算進版面寬度，
@@ -40,13 +40,13 @@
 <div id="ctl">
   <input type="file" id="f" accept="application/pdf">
   <label><input type="checkbox" id="spread"> 對開表（兩頁併一版）</label>
-  <button id="bu" onclick="undo()">↩ 復原</button>
-  <button id="br" onclick="redo()">↪ 重做</button>
+  <button id="bu" onclick="undo()" title="復原">↩ 復原</button>
+  <button id="br" onclick="redo()" title="重做">↪ 重做</button>
   <button onclick="group()">組成群組</button>
   <button onclick="ungroup()">解除群組</button>
   <button onclick="sel.clear();render()">取消選取</button>
   <button onclick="print()">列印 / 存成 PDF</button>
-  <span style="margin-left:12px;color:#666">對齊(⌥點格選取)</span>
+  <span style="margin-left:12px;color:#666">對齊(<b id="kAlt">Alt</b>點格選取)</span>
   <button onclick="align('l')" title="靠左對齊">⇤</button>
   <button onclick="align('c')" title="水平置中">⇔</button>
   <button onclick="align('r')" title="靠右對齊">⇥</button>
@@ -59,6 +59,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
 const U=pdfjsLib; U.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+// 按鍵標示依平台換：Mac 用 ⌘/⌥，Windows、Linux 用 Ctrl/Alt
+const MAC=/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent);
+const KMOD=MAC?'⌘':'Ctrl', KALT=MAC?'⌥':'Alt';
+kAlt.textContent=KALT;
+bu.title=`復原 (${KMOD}Z)`; br.title=`重做 (${MAC?'⇧⌘Z':'Ctrl+Shift+Z'})`;
 
 // 版面（固定，不隨資料跑）：W/H 頁面尺寸、frame 天地線與欄線、head 固定頁首、bodyTop/LH 表身格線
 // units[i] = 一個可搬動單位（1 列，或群組後的多列）；breaks 以 unit 為索引
@@ -359,7 +365,7 @@ function align(mode){
   // 對開時同一格會有左右兩份 DOM（右半是複本），依 data-p 去重
   const seen=new Set(), els=[...out.querySelectorAll('.seg.pick')]
     .filter(el=>!seen.has(el.dataset.p) && seen.add(el.dataset.p));
-  if(els.length<(mode==='col'?1:2)) return alert('⌥（Option）點選要對齊的格子，至少兩格');
+  if(els.length<(mode==='col'?1:2)) return alert(`按住 ${KALT} 點選要對齊的格子，至少兩格`);
   const box=els.map(el=>({p:el.dataset.p, x:seg0(el.dataset.p).x, w:PT(el)}));
   const L=Math.min(...box.map(b=>b.x)), R=Math.max(...box.map(b=>b.x+b.w));
   push();
@@ -430,6 +436,7 @@ function setSeg(p,t){
 function group(){
   const ix=[...sel].sort((a,b)=>a-b);
   if(ix.length<2) return alert('請先選兩列以上（點一下起點，Shift 點終點）');
+
   push();
   const merged=[].concat(...units.slice(ix[0],ix[0]+ix.length));
   units.splice(ix[0], ix.length, merged);
