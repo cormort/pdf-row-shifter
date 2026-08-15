@@ -8,7 +8,9 @@
      Chrome 就會把整份文件縮小以「符合寬度」，印出來變一半大小 */
   .page{background:#fff;box-shadow:0 1px 4px #0003;position:relative;overflow:hidden;contain:paint;flex:none}
   .sheet{display:flex;gap:4px;justify-content:center;margin-bottom:8px}
-  .seg,.row{position:absolute;white-space:pre;font-family:"PingFang TC","Heiti TC",serif}
+  /* 原檔中文多為微軟正黑、數字多為 Times New Roman，分開對應才不會整份變同一種字 */
+  :root{--serif:"Times New Roman",Times,serif}
+  .seg,.row{position:absolute;white-space:pre;font-family:"Microsoft JhengHei","PingFang TC","Heiti TC",sans-serif}
   .row{cursor:grab}
   .row:hover{outline:1px dashed #4285f4;background:#e8f0fe80}
   .row.sel{background:#fff3cd}
@@ -80,7 +82,7 @@ async function load(){
       const dx=k*pageW;
       const c=await pg.getTextContent();
       await pg.getOperatorList();          // 跑過才會把字型載進 commonObjs，粗體資訊在那裡
-      txt.push(...lines(c, H, bolds(pg,c)).map(r=>shift(r,dx)));
+      txt.push(...lines(c, H, fonts(pg,c)).map(r=>shift(r,dx)));
       if(p===1) fr.push(...(await getFrame(pg,H)).map(l=>({...l, x:l.x+dx})));
     }
     W = pageW*N;
@@ -117,19 +119,20 @@ async function load(){
 };
 
 // 文字依 y 分列（3pt 內同列），座標轉為由上而下
-// 哪些字型是粗體：字型名稱裡的 Bold/Black/Heavy（例：MicrosoftJhengHeiBold、TimesNewRomanPS-BoldMT）
-function bolds(pg,c){
+// 從字型名稱取粗體與襯線與否（例：TimesNewRomanPS-BoldMT → 粗體＋襯線）
+function fonts(pg,c){
   const m={};
   for(const fn of Object.keys(c.styles||{})){
     let nm=''; try{ nm=(pg.commonObjs.get(fn)||{}).name||''; }catch(e){}
-    m[fn]=/bold|black|heavy|semib/i.test(nm);
+    m[fn]={ b:/bold|black|heavy|semib/i.test(nm), s:/times|serif|roman|georgia|mingliu|song|kai/i.test(nm) };
   }
   return m;
 }
 
-function lines(c,H,bold={}){
+function lines(c,H,ft={}){
   const its=c.items.filter(i=>i.str.trim())
-    .map(i=>({x:i.transform[4], y:H-i.transform[5], t:i.str, w:i.width, b:bold[i.fontName]?1:0,
+    .map(i=>({x:i.transform[4], y:H-i.transform[5], t:i.str, w:i.width,
+              b:(ft[i.fontName]||{}).b?1:0, s:(ft[i.fontName]||{}).s?1:0,
               sz:Math.hypot(i.transform[2],i.transform[3])}))
     .sort((a,b)=>a.y-b.y);
   const out=[]; let cur=null;
@@ -156,7 +159,7 @@ function merge(rs){
 async function getFrame(pg,H){
   const ops=await pg.getOperatorList(), OPS=U.OPS, out=[];
   // 路徑座標在目前的 CTM 之下，得自己追 transform / save / restore
-  let m=[1,0,0,1,0,0], stack=[];
+  let m=[1,0,0,1,0,0], stack=[], lw=.5;
   const mul=(a,b)=>[a[0]*b[0]+a[2]*b[1], a[1]*b[0]+a[3]*b[1],
                     a[0]*b[2]+a[2]*b[3], a[1]*b[2]+a[3]*b[3],
                     a[0]*b[4]+a[2]*b[5]+a[4], a[1]*b[4]+a[3]*b[5]+a[5]];
@@ -166,6 +169,7 @@ async function getFrame(pg,H){
     if(fn===OPS.save){ stack.push(m); continue; }
     if(fn===OPS.restore){ m=stack.pop()||m; continue; }
     if(fn===OPS.transform){ m=mul(m, ops.argsArray[i]); continue; }
+    if(fn===OPS.setLineWidth){ lw=ops.argsArray[i][0]*Math.hypot(m[0],m[1]) || .5; continue; }
     if(fn!==OPS.constructPath) continue;
     const [cmds,raw]=ops.argsArray[i];
     const co=[]; for(let j=0;j<raw.length;j+=2){ const p=app(raw[j],raw[j+1]); co.push(p[0],p[1]); }
@@ -174,8 +178,8 @@ async function getFrame(pg,H){
       if(cm===OPS.moveTo){ px=co[k++]; py=co[k++]; }
       else if(cm===OPS.lineTo){
         const x=co[k++], y=co[k++];
-        if(Math.abs(y-py)<.5) out.push({x:Math.min(px,x), y:H-y, w:Math.abs(x-px), h:0});
-        else if(Math.abs(x-px)<.5) out.push({x, y:H-Math.max(py,y), w:0, h:Math.abs(y-py)});
+        if(Math.abs(y-py)<.5) out.push({x:Math.min(px,x), y:H-y, w:Math.abs(x-px), h:0, t:lw});
+        else if(Math.abs(x-px)<.5) out.push({x, y:H-Math.max(py,y), w:0, h:Math.abs(y-py), t:lw});
         px=x; py=y;
       }
       else if(cm===OPS.rectangle){
@@ -185,7 +189,9 @@ async function getFrame(pg,H){
         px=x1; py=y1;
         // 這類 PDF 的框線是「很扁的矩形」；長寬都大的是色塊（整頁底色），不是線
         if(Math.min(w,h)>2) continue;
-        if(h<=2) out.push({x,y:t+h/2,w,h:0}); else out.push({x:x+w/2,y:t,w:0,h});
+        // 扁矩形當線，厚度就是它的短邊（例：這類公文表的框線是 0.75pt）
+        if(h<=2) out.push({x,y:t+h/2,w,h:0,t:h||.5});
+        else out.push({x:x+w/2,y:t,w:0,h,t:w||.5});
         continue; }
       else k+=cm===OPS.curveTo?6:2;
     }
@@ -223,6 +229,26 @@ onkeydown = e => {
 
 const nlines=(a,b)=>units.slice(a,b).reduce((n,u)=>n+u.length,0);
 const clamp=(v,lo,hi)=>Math.min(hi,Math.max(lo,v));
+const th=l=>l.t||.5;
+
+// 文字在 PDF 裡是以「基線」定位，但 CSS 的 top 是行框上緣，兩者相差多少要看實際字型的
+// ascent，猜不得（Times 0.89、正黑 1.08）。實地量一次每種字型組合，之後直接換算。
+const bo={};
+function baseOff(sz,bold,serif){
+  const k=`${sz}|${bold}|${serif}`;
+  if(bo[k]!=null) return bo[k];
+  const p=document.createElement('span');
+  p.className='seg';                       // 一定要用跟正文相同的字型來量，否則 ascent 會不一樣
+  p.style.cssText=`position:absolute;visibility:hidden;white-space:pre;font-size:${sz}pt;line-height:${sz}pt`
+    +(bold?';font-weight:700':'')+(serif?';font-family:var(--serif)':'');
+  p.textContent='X';
+  const s=document.createElement('span');
+  s.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline';
+  p.appendChild(s); document.body.appendChild(p);
+  const off=(s.getBoundingClientRect().top-p.getBoundingClientRect().top)*72/96;
+  p.remove();
+  return bo[k]=off;
+}
 
 function render(){
   out.innerHTML='';
@@ -242,7 +268,8 @@ function render(){
     frame.forEach(l=>{
       const k=Math.min(N-1,Math.floor(l.x/pageW));
       halves[k].insertAdjacentHTML('beforeend',
-        `<div class=ln style="left:${l.x-k*pageW}pt;top:${l.y}pt;width:${l.w||.5}pt;height:${l.h||.5}pt"></div>`);
+        // l.x / l.y 是線的中心；畫成方塊時要往回退半個線寬，否則整條線會偏移
+        `<div class=ln style="left:${l.x-k*pageW-(l.w?0:th(l)/2)}pt;top:${l.y-(l.h?0:th(l)/2)}pt;width:${l.w||th(l)}pt;height:${l.h||th(l)}pt"></div>`);
     });
     // 首頁用首頁頁首，續頁一律用第 2 頁的（含「（續）」），只換頁碼
     const hi = head[pi] ? pi : Math.min(1,head.length-1);
@@ -306,7 +333,7 @@ function segs(r, top, rel, pgno, dy=0, path='', half=0){
   const pn=s=>pgno&&r.length<=2&&/^\d+$/.test(s.t);
   const txt=s=>pn(s) ? String(pgno+Math.floor(s.x/pageW)) : s.t;
   return r.map((s,k)=>[s,k]).filter(([s])=>Math.floor(s.x/pageW)===half)
-    .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy:s.y)-s.sz}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}">${esc(txt(s))}</span>`).join('');
+    .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy:s.y)-baseOff(s.sz,s.b,s.s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
 }
 
 // 系統字型的字寬跟原檔內嵌字型不同，數字排出來會比原本寬、壓到欄線上。
