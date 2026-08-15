@@ -128,12 +128,14 @@ async function load(){
   const sep = hy[si];
   head = all.map(pg=>pg.filter(r=>r.y<=sep || r.y>bottomY));   // 地線以下（頁碼）也算固定
 
-  rows=[]; units=[]; breaks=[]; sel.clear(); undoS=[]; redoS=[];
+  rows=[]; units=[]; breaks=[]; sel.clear(); undoS=[]; redoS=[]; selSeg.clear();
+  avgPg.clear(); locks.clear(); minLH=0; dragI=lastI=null;
   all.forEach(pg=>{
     const body=pg.filter(r=>r.y>sep && r.y<=bottomY);
     rows.push(...body); units.push(...body.map(r=>[r]));
     breaks.push(units.length);
   });
+  if(!rows.length){ alert('表身範圍內找不到可調整的資料列（需為文字型 PDF，且表格有橫貫全寬的天地線）'); out.innerHTML=''; return; }
 
   // 表身格線：起始 y 與行高取自原檔
   topY = rows[0].y;
@@ -446,11 +448,11 @@ function move(pi,d){
   render();
 }
 
-const esc=t=>t.replace(/</g,'&lt;');
+const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;');
 // half = 只輸出落在第幾個半頁的片段，x 也換算成該半頁的座標
 function segs(r, top, rel, pgno, dy=0, path='', half=0){
-  // 頁首/頁尾裡孤立的純數字視為頁碼，換成新頁次（對開時左右各自算）
-  const pn=s=>pgno&&r.length<=2&&/^\d+$/.test(s.t);
+  // 地線以下（頁尾）孤立的純數字視為頁碼，換成新頁次（對開時左右各自算）
+  const pn=s=>pgno&&r.y>bottomY&&r.length<=2&&/^\d+$/.test(s.t);
   const txt=s=>pn(s) ? String(pgno+Math.floor(s.x/pageW)) : s.t;
   return r.map((s,k)=>[s,k]).filter(([s])=>Math.floor(s.x/pageW)===half)
     .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy:s.y)-baseOff(s.sz,s.b,s.s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
@@ -562,6 +564,7 @@ function group(){
   const merged=[].concat(...units.slice(ix[0],ix[0]+ix.length));
   units.splice(ix[0], ix.length, merged);
   breaks=breaks.map(b=>b>ix[0] ? Math.max(ix[0]+1, b-(ix.length-1)) : b);
+  breaks=breaks.filter((b,i)=>b>(i?breaks[i-1]:0));   // 群組跨越分頁時多個 break 會夾到同一格，清掉空頁
   sel.clear(); render();
 }
 function ungroup(){
