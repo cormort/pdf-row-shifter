@@ -4,7 +4,9 @@
   body{font:14px/1.6 -apple-system,"PingFang TC",sans-serif;margin:0;background:#eee}
   #ctl{position:sticky;top:0;background:#f5f5f5;padding:8px 12px;z-index:10;border-bottom:1px solid #ccc}
   #out{padding:12px 0}
-  .page{background:#fff;box-shadow:0 1px 4px #0003;position:relative;overflow:hidden;flex:none}
+  /* contain:paint 是必要的：對開時內層有兩頁寬，只用 overflow:hidden 列印仍會被算進版面寬度，
+     Chrome 就會把整份文件縮小以「符合寬度」，印出來變一半大小 */
+  .page{background:#fff;box-shadow:0 1px 4px #0003;position:relative;overflow:hidden;contain:paint;flex:none}
   .sheet{display:flex;gap:4px;justify-content:center;margin-bottom:8px}
   .seg,.row{position:absolute;white-space:pre;font-family:"PingFang TC","Heiti TC",serif}
   .row{cursor:grab}
@@ -20,16 +22,18 @@
   .brk{display:flex;gap:6px;justify-content:center;align-items:center;padding:4px;color:#555;font-size:12px}
   button{font:inherit;padding:2px 8px;cursor:pointer}
   @media print{
-    @page{size:A4;margin:0}
+    @page{margin:0}   /* 實際紙張尺寸由 load() 依來源 PDF 動態寫入 #pagesize */
     body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     #ctl,.brk{display:none}
     /* 這裡少一項就會每頁多吐一張空白紙：頁面盒剛好等於 A4，外圍任何留白都會溢位 */
-    #out{padding:0;margin:0}
-    .sheet{display:block;gap:0;margin:0;padding:0}
+    html,body,#out{width:auto;padding:0;margin:0;overflow:hidden}
+    .sheet{display:block;gap:0;margin:0;padding:0;width:auto}
     .page{box-shadow:none;margin:0;break-after:page;break-inside:avoid}
     .sheet:last-child .page:last-child{break-after:avoid}   /* 不然結尾會多一張空白頁 */
   }
 </style>
+
+<style id="pagesize"></style>
 
 <div id="ctl">
   <input type="file" id="f" accept="application/pdf">
@@ -105,6 +109,8 @@ async function load(){
   fillY = Math.min(bottomY, bodyTop + (maxLines-1)*LH);
   // ponytail: 行距最多壓到原本的 60%，再多就不好看了；要更緊改這個係數
   perPage = Math.floor((bottomY-bodyTop)/(LH*.6))+1;
+  // 紙張尺寸跟著來源 PDF 走；寫死 A4 的話，非 A4 的原稿列印時會被整份縮小
+  pagesize.textContent=`@page{size:${pageW}pt ${H}pt;margin:0}`;
   render();
 };
 
