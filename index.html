@@ -175,7 +175,13 @@ drop.ondrop = e => { e.preventDefault(); zone.classList.remove('on'); take(e.dat
 // 拖到視窗其他地方不要讓瀏覽器直接開啟檔案
 addEventListener('dragover', e=>e.preventDefault());
 addEventListener('drop', e=>e.preventDefault());
-spread.onchange = () => buf && queueLoad();
+// 切換對開要重新解析原檔，推拉／群組／鎖定／改字全部歸零，undo 也救不回來（load() 會清空 undoS）。
+// 沒動過就不打擾：undoS 為空代表本來就沒東西可丟。
+spread.onchange = () => {
+  if(undoS.length && !confirm('切換對開表會重新載入原檔，目前的推拉／群組／鎖定／改字都會清掉。要繼續嗎？'))
+    return spread.checked=!spread.checked;
+  buf && queueLoad();
+};
 sink.onchange = () => units.length && render();
 padT.oninput = padB.oninput = () => { PADT=+padT.value||0; PADB=+padB.value||0; units.length && relayout(); };
 // 註起始＝第一列註距地線的 pt；其餘註列維持彼此的相對距離
