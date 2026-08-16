@@ -80,6 +80,7 @@
       下<input type="number" id="padB" value="2" min="0" max="60" step="1" style="width:3.4em">pt</label>
     <label title="表尾註第一列距地線多遠（只影響註，與上下邊界無關）">註起始<input type="number" id="noteY" value="0" min="-200" max="200" step="1" style="width:3.8em">pt</label>
     <label title="列高再怎麼壓縮都不低於這個值">最小列高<input type="number" id="minLh" value="0" min="0" max="60" step="0.5" style="width:3.8em">pt</label>
+    <label title="最後一頁列不滿時，尾端的合計／總計列沉到地線上方，中間留白"><input type="checkbox" id="sink"> 合計貼地線</label>
     <label title="畫出表身上下界（只在畫面上，不會印出來）"><input type="checkbox" id="guide" checked> 輔助線</label>
   </span>
   <span class="g">
@@ -135,6 +136,7 @@ let loading=Promise.resolve();
 const queueLoad=()=>{ loading=loading.then(load, load).catch(e=>console.error(e)); };
 f.onchange = e => { buf=e.target.files[0]; queueLoad(); };
 spread.onchange = () => buf && queueLoad();
+sink.onchange = () => units.length && render();
 padT.oninput = padB.oninput = () => { PADT=+padT.value||0; PADB=+padB.value||0; units.length && relayout(); };
 // 註起始＝第一列註距地線的 pt；其餘註列維持彼此的相對距離
 noteY.oninput = () => { NOTEY=+noteY.value||0; units.length && render(); };
@@ -470,13 +472,23 @@ function render(){
     const lh = Math.max(minLH, avg ? (bodyBot-bodyTop)/sp
                              : !last ? (fillY-bodyTop)/sp
                                      : Math.min(LH,(bodyBot-bodyTop)/sp));
+    // 「合計貼地線」：最後一頁列不滿時，尾端那幾列合計／總計整塊沉到地線上方，
+    // 中間留白；其餘列位置與行距都不動（跟「平均列高」把整頁拉開不同）
+    const pg=units.slice(start,end);
+    const isTot=u=>/^[\s　]*[合總][\s　]*計/.test(u[0].map(s=>s.t).join(''));
+    let tot=0; if(last && sink.checked) while(tot<pg.length && isTot(pg[pg.length-1-tot])) tot++;
+    // 註可能騎在地線上（註起始為負），合計沉到地線就會壓到它：下限再退到註的上一列
+    const noteTop = note.length ? Math.min(...note.map(r=>r.y))+ndy : Infinity;
+    const floor = Math.min(bodyBot, noteTop-lh);
+    const sunk = tot ? Math.max(0, floor-(bodyTop+(n-1)*lh)) : 0;
     let li=0;
-    units.slice(start,end).forEach((u,i)=>{
+    pg.forEach((u,i)=>{
+      const dy = i>=pg.length-tot ? sunk : 0;
       halves.forEach((h,k)=>{
         const e=document.createElement('div');
         e.className='row'+(sel.has(start+i)?' sel':'')+(u.length>1?' grp':'');
         // 框往上抬 0.8 行，讓可點擊範圍蓋住文字本身而不是它下面那行
-        e.style.cssText=`left:0;top:${bodyTop+li*lh-lh*.8}pt;width:100%;height:${u.length*lh}pt`;
+        e.style.cssText=`left:0;top:${bodyTop+li*lh+dy-lh*.8}pt;width:100%;height:${u.length*lh}pt`;
         e.draggable=!editMode.checked;   // 編輯模式下不拖曳，否則點字會變成拖列
       e.dataset.i=start+i;
         e.innerHTML=u.map((r,j)=>segs(r,0,true,0,j*lh+lh*.8,`u,${start+i},${j}`,k,lh/LH)).join('');
