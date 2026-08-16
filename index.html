@@ -31,7 +31,8 @@
   #zone h1{margin:0 0 10px;font-size:21px;font-weight:600}
   #zone p{margin:6px 0;font-size:13px;color:var(--dim);line-height:1.7}
   #zone b{color:var(--ink)}
-  #err{color:#c0392b;font-size:13px;white-space:pre-wrap;min-height:18px}
+  #err{color:var(--dim);font-size:13px;white-space:pre-wrap;min-height:18px}
+  #err.bad{color:#c0392b}
   #drop small{color:var(--dim);font-size:12px;max-width:620px;line-height:1.8}
   /* contain:paint 是必要的：對開時內層有兩頁寬，只用 overflow:hidden 列印仍會被算進版面寬度，
      Chrome 就會把整份文件縮小以「符合寬度」，印出來變一半大小 */
@@ -157,14 +158,15 @@ let buf=null;
 let loading=Promise.resolve();
 const queueLoad=()=>{ loading=loading.then(load, load).catch(e=>{ console.error(e); fail('讀不到這個 PDF：'+(e.message||e)); }); };
 // 失敗就退回起始畫面，把原因寫在拖曳區下方（比 alert 好找，也還留在可以再拖一次的地方）
-const fail = m => { err.textContent=m; drop.classList.remove('hide'); out.innerHTML=''; };
+const fail = m => { err.textContent=m; err.classList.add('bad'); drop.classList.remove('hide'); out.innerHTML=''; };
 f.onchange = e => { take(e.target.files[0]); };
 
 // ── 起始畫面的拖曳區：載入成功才收起，失敗留在原地顯示原因 ──
 const take = file => {
   if(!file) return;
-  if(!/\.pdf$/i.test(file.name)) return err.textContent=`「${file.name}」不是 PDF`;
-  err.textContent=''; buf=file; queueLoad();
+  if(!/\.pdf$/i.test(file.name)){ err.classList.add('bad'); return err.textContent=`「${file.name}」不是 PDF`; }
+  // 大檔要跑好幾秒（260 頁實測 6.4s），沒回饋會像當掉。成功時 drop 收起、失敗時 fail() 覆寫
+  err.classList.remove('bad'); err.textContent=`讀取中…（${file.name}）`; buf=file; queueLoad();
 };
 zone.onclick = () => f.click();
 drop.ondragover = e => { e.preventDefault(); zone.classList.add('on'); };
