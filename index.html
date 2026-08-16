@@ -243,7 +243,11 @@ async function load(){
     rows.push(...body); units.push(...body.map(r=>[r]));
     breaks.push(units.length);
   });
-  if(!rows.length){ fail('表身範圍內找不到可調整的資料列（需為文字型 PDF，且表格有橫貫全寬的天地線）'); return; }
+  // 多表文件（封面＋目次＋多張表）也是文字型、也有全寬橫線，錯誤訊息若只講那兩點會把人帶錯方向。
+  // 這種檔的特徵是 sep 切太前面、幾乎整份被判成表尾註（OECD 300 頁實測 note=8757、表身 0 列）。
+  if(!rows.length){ fail(note.length>50
+    ? `找不到表身資料列（地線以下被判成註的有 ${note.length} 列）。這份看起來不是單一連續表格，請先切出單一張表再試。`
+    : '表身範圍內找不到可調整的資料列（需為文字型 PDF，且表格有橫貫全寬的天地線）'); return; }
 
   // 表身格線：起始 y 與行高取自原檔
   topY = rows[0].y;
