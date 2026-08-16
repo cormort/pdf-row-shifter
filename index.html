@@ -25,7 +25,9 @@
   /* contain:paint 是必要的：對開時內層有兩頁寬，只用 overflow:hidden 列印仍會被算進版面寬度，
      Chrome 就會把整份文件縮小以「符合寬度」，印出來變一半大小 */
   .page{background:#fff;box-shadow:0 2px 10px #00000024;position:relative;overflow:hidden;contain:paint;flex:none}
-  .sheet{display:flex;gap:4px;justify-content:center;margin-bottom:10px}
+  /* safe center：視窗塞不下（對開時常見）就改成靠左，否則置中會把左半頁推到 x<0，
+     那塊捲不回來也看不到。溢出的右側交給整頁的橫向捲軸 */
+  .sheet{display:flex;gap:4px;justify-content:safe center;margin-bottom:10px;width:fit-content;min-width:100%}
   /* 原檔中文多為微軟正黑、數字多為 Times New Roman，分開對應才不會整份變同一種字 */
   :root{--serif:"Times New Roman",Times,serif}
   .seg,.row{position:absolute;white-space:pre;font-family:"Microsoft JhengHei","PingFang TC","Heiti TC",sans-serif}
@@ -60,7 +62,7 @@
     #ctl,.brk{display:none}
     /* 這裡少一項就會每頁多吐一張空白紙：頁面盒剛好等於 A4，外圍任何留白都會溢位 */
     html,body,#out{width:auto;padding:0;margin:0;overflow:hidden}
-    .sheet{display:block;gap:0;margin:0;padding:0;width:auto}
+    .sheet{display:block;gap:0;margin:0;padding:0;width:auto;min-width:0}   /* 畫面用的 min-width:100% 不能帶進列印，會撐寬版面 */
     .page{box-shadow:none;margin:0;break-after:page;break-inside:avoid}
     .sheet:last-child .page:last-child{break-after:avoid}   /* 不然結尾會多一張空白頁 */
   }
@@ -76,6 +78,7 @@
   <span class="g">
     <label title="表身上下留白，避免字壓到天地線">邊界 上<input type="number" id="padT" value="2" min="0" max="60" step="1" style="width:3.4em">
       下<input type="number" id="padB" value="2" min="0" max="60" step="1" style="width:3.4em">pt</label>
+    <label title="表尾註第一列距地線多遠（只影響註，與上下邊界無關）">註起始<input type="number" id="noteY" value="0" min="0" max="200" step="1" style="width:3.8em">pt</label>
     <label title="列高再怎麼壓縮都不低於這個值">最小列高<input type="number" id="minLh" value="0" min="0" max="60" step="0.5" style="width:3.8em">pt</label>
     <label title="畫出表身上下界（只在畫面上，不會印出來）"><input type="checkbox" id="guide" checked> 輔助線</label>
   </span>
@@ -122,7 +125,7 @@ bu.title=`復原 (${KMOD}Z)`; br.title=`重做 (${MAC?'⇧⌘Z':'Ctrl+Shift+Z'})
 let minLH=0;
 const avgPg=new Set();        // 要平均列高的頁（非最後一頁本來就是平均的）
 const locks=new Set();        // 鎖住的分頁點，以「第幾個 unit 之後斷頁」記，不受其他頁增減影響
-let W=595,pageW=595,H=842, frame=[], head=[], rows=[], units=[], breaks=[], PADT=2, PADB=2, topY=0, bodyTop=0, bodyBot=800, bottomY=800, fillY=800, LH=7, perPage=1;
+let W=595,pageW=595,H=842, frame=[], head=[], note=[], rows=[], units=[], breaks=[], PADT=2, PADB=2, NOTEY=0, topY=0, bodyTop=0, bodyBot=800, bottomY=800, fillY=800, LH=7, perPage=1;
 const sel=new Set();
 
 let buf=null;
@@ -133,6 +136,8 @@ const queueLoad=()=>{ loading=loading.then(load, load).catch(e=>console.error(e)
 f.onchange = e => { buf=e.target.files[0]; queueLoad(); };
 spread.onchange = () => buf && queueLoad();
 padT.oninput = padB.oninput = () => { PADT=+padT.value||0; PADB=+padB.value||0; units.length && relayout(); };
+// 註起始＝第一列註距地線的 pt；其餘註列維持彼此的相對距離
+noteY.oninput = () => { NOTEY=+noteY.value||0; units.length && render(); };
 guide.onchange = () => units.length && render();
 minLh.oninput = () => { minLH=+minLh.value||0; units.length && render(); };
 // 全部頁面：有任何一頁還沒平均就全開，都開了就全關
@@ -168,7 +173,17 @@ async function load(){
   // 表頭那幾條橫線彼此靠得近，資料區則是一大段空白；斷在第一個大間距處
   let si=0; while(si+1<hy.length-1 && hy[si+1]-hy[si]<100) si++;
   const sep = hy[si];
-  head = all.map(pg=>pg.filter(r=>r.y<=sep || r.y>bottomY));   // 地線以下（頁碼）也算固定
+  // 地線以下：純數字（≤2 段）是頁碼，跟著頁首走；其餘是表尾註，只畫在最後一頁
+  const isPgNo = r => r.length<=2 && r.every(s=>/^\d+$/.test(s.t));
+  head = all.map(pg=>pg.filter(r=>r.y<=sep || (r.y>bottomY && isPgNo(r))));
+  // 註通常每頁都有一份，依內容去重，最後一頁只畫一次
+  note=[]; const seen=new Set();
+  all.forEach(pg=>pg.filter(r=>r.y>bottomY && !isPgNo(r)).forEach(r=>{
+    const k=r.map(s=>s.t).join(''); if(!seen.has(k)){ seen.add(k); note.push(r); }
+  }));
+  // 註起始預設沿用原檔（第一列註距地線多遠）
+  NOTEY = note.length ? +(note[0].y-bottomY).toFixed(1) : 0;
+  noteY.value = NOTEY; noteY.parentElement.style.display = note.length?'':'none';
 
   rows=[]; units=[]; breaks=[]; sel.clear(); undoS=[]; redoS=[]; selSeg.clear();
   avgPg.clear(); locks.clear(); minLH=0; dragI=lastI=null;
@@ -341,10 +356,10 @@ function spanning(fr){
 
 // ── 復原 / 重做：每次動作前存一份 units+breaks 快照（列本身唯讀，淺拷貝就夠） ──
 let undoS=[], redoS=[];
-const snap=()=>({u:units.map(u=>[...u]), b:breaks.slice(), h:head.map(p=>[...p]), l:[...locks]});
+const snap=()=>({u:units.map(u=>[...u]), b:breaks.slice(), h:head.map(p=>[...p]), n:[...note], l:[...locks]});
 const push=()=>{ undoS.push(snap()); redoS=[]; if(undoS.length>100) undoS.shift(); };
 // locks 以 unit 索引記，跟著 breaks 一起還原，不然復原後鎖會指到不存在的分頁點
-function restore(s){ units=s.u; breaks=s.b; head=s.h;
+function restore(s){ units=s.u; breaks=s.b; head=s.h; note=s.n;
   locks.clear(); s.l.forEach(b=>locks.add(b)); sel.clear(); render(); }
 function undo(){ if(!undoS.length) return; redoS.push(snap()); restore(undoS.pop()); }
 function redo(){ if(!redoS.length) return; undoS.push(snap()); restore(redoS.pop()); }
@@ -436,6 +451,10 @@ function render(){
     // 少一列就稍微放寬、多一列就稍微壓縮，不會在頁尾留下一塊突兀的空白。
     const n=nlines(start,end);
     const last=pi===breaks.length-1;
+    // 表尾註跟著表格結尾走：只畫在最後一頁，整塊平移到「地線 + 註起始」，內部行距不變
+    const ndy = note.length ? bottomY+NOTEY-note[0].y : 0;
+    if(last) note.forEach((r,ri)=>halves.forEach((h,k)=>
+      h.insertAdjacentHTML('beforeend', segs(r, 0, false, 0, ndy, `n,0,${ri}`, k))));
     // 勾「平均列高」＝這頁的列平均分佈到表身底端（bodyBot）；
     // 沒勾時維持原行為：非最後一頁對齊「最滿那頁」的底端 fillY，最後一頁保留原行高。
     const avg = avgPg.has(pi), sp=Math.max(1,n-1);
@@ -505,13 +524,14 @@ function move(pi,d){
 
 const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;');
 // half = 只輸出落在第幾個半頁的片段，x 也換算成該半頁的座標
-// k = 列高壓縮比，用來等比縮放同列內部的基線落差（中文比數字低幾 pt 那種）
-function segs(r, top, rel, pgno, dy=0, path='', half=0, k=1){
+// kz = 列高壓縮比，用來等比縮放同列內部的基線落差（中文比數字低幾 pt 那種）
+// （別叫 k：下面 map 的索引也叫 k，會把壓縮比蓋掉，基線落差變成「乘上第幾段」）
+function segs(r, top, rel, pgno, dy=0, path='', half=0, kz=1){
   // 地線以下（頁尾）孤立的純數字視為頁碼，換成新頁次（對開時左右各自算）
   const pn=s=>pgno&&r.y>bottomY&&r.length<=2&&/^\d+$/.test(s.t);
   const txt=s=>pn(s) ? String(pgno+Math.floor(s.x/pageW)) : s.t;
   return r.map((s,k)=>[s,k]).filter(([s])=>Math.floor(s.x/pageW)===half)
-    .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy+(s.y-r.y)*k:s.y)-baseOff(s.sz,s.b,s.s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
+    .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy+(s.y-r.y)*kz:s.y+dy)-baseOff(s.sz,s.b,s.s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
 }
 
 // 系統字型的字寬跟原檔內嵌字型不同，數字排出來會比原本寬、壓到欄線上。
@@ -556,11 +576,13 @@ function align(mode){
   });
   selSeg.clear(); render();
 }
-const seg0=p=>{ const [k,a,b,c]=p.split(','); return (k==='u'?units[a][b]:head[a][b])[c]; };
+// data-p = 「u|h|n, 群組/頁索引, 列, 段」；n（表尾註）沒有分頁維度，a 恆為 0
+const owner=(k,a)=> k==='u' ? units[a] : k==='n' ? note : head[a];
+const seg0=p=>{ const [k,a,b,c]=p.split(','); return owner(k,a)[b][c]; };
 function setX(p,x){
   const [k,a,b,c]=p.split(',');
-  const owner = k==='u' ? units[a] : head[a];
-  owner[b] = Object.assign(owner[b].map((s,i)=>i==c?{...s,x}:s), {y:owner[b].y});
+  const o = owner(k,a);
+  o[b] = Object.assign(o[b].map((s,i)=>i==c?{...s,x}:s), {y:o[b].y});
 }
 
 // ── 就地編輯：勾選「編輯」後點格子改字，Enter 或點別處存檔、Esc 放棄 ──
@@ -606,9 +628,9 @@ function edit(el, ev){
 // 改字時整列換成新物件（copy-on-write），舊快照才留得住原文，復原才有效
 function setSeg(p,t){
   const [k,a,b,c]=p.split(',');
-  const owner = k==='u' ? units[a] : head[a];
+  const o = owner(k,a);
   // 改過字之後原本的寬度就不適用了，拿掉才不會把新字硬壓成舊寬度
-  owner[b] = Object.assign(owner[b].map((s,i)=>i==c?{...s,t,w:0}:s), {y:owner[b].y});
+  o[b] = Object.assign(o[b].map((s,i)=>i==c?{...s,t,w:0}:s), {y:o[b].y});
 }
 
 // ── 選取與群組：選連續的 2 列以上組成群組，之後一起搬、不會被分頁拆開 ──
