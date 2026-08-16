@@ -78,7 +78,7 @@
   <span class="g">
     <label title="表身上下留白，避免字壓到天地線">邊界 上<input type="number" id="padT" value="2" min="0" max="60" step="1" style="width:3.4em">
       下<input type="number" id="padB" value="2" min="0" max="60" step="1" style="width:3.4em">pt</label>
-    <label title="表尾註第一列距地線多遠（只影響註，與上下邊界無關）">註起始<input type="number" id="noteY" value="0" min="0" max="200" step="1" style="width:3.8em">pt</label>
+    <label title="表尾註第一列距地線多遠（只影響註，與上下邊界無關）">註起始<input type="number" id="noteY" value="0" min="-200" max="200" step="1" style="width:3.8em">pt</label>
     <label title="列高再怎麼壓縮都不低於這個值">最小列高<input type="number" id="minLh" value="0" min="0" max="60" step="0.5" style="width:3.8em">pt</label>
     <label title="畫出表身上下界（只在畫面上，不會印出來）"><input type="checkbox" id="guide" checked> 輔助線</label>
   </span>
@@ -176,19 +176,28 @@ async function load(){
   // 地線以下：純數字（≤2 段）是頁碼，跟著頁首走；其餘是表尾註，只畫在最後一頁
   const isPgNo = r => r.length<=2 && r.every(s=>/^\d+$/.test(s.t));
   head = all.map(pg=>pg.filter(r=>r.y<=sep || (r.y>bottomY && isPgNo(r))));
+  // 註常常騎在地線上（前一兩列在線上、其餘在線下），只看地線會把它切成兩半。
+  // 實測 13 個公文檔：「註／附註／說明」開頭的列一定是該頁最後一段，之後同頁沒有
+  // 資料列，所以從該列起算到頁尾都是註。限在頁面下段，避免表中真有「註」開頭的資料列。
+  const noteFrom = pg => Math.min(...pg.filter(r=>r.y>H*.6 && /^\s*(註|附註|說明)/.test(r[0].t))
+                                    .map(r=>r.y), Infinity);
+  const isNote = (r,nf) => !isPgNo(r) && (r.y>bottomY || r.y>=nf);
   // 註通常每頁都有一份，依內容去重，最後一頁只畫一次
   note=[]; const seen=new Set();
-  all.forEach(pg=>pg.filter(r=>r.y>bottomY && !isPgNo(r)).forEach(r=>{
-    const k=r.map(s=>s.t).join(''); if(!seen.has(k)){ seen.add(k); note.push(r); }
-  }));
-  // 註起始預設沿用原檔（第一列註距地線多遠）
-  NOTEY = note.length ? +(note[0].y-bottomY).toFixed(1) : 0;
+  all.forEach(pg=>{ const nf=noteFrom(pg);
+    pg.filter(r=>r.y>sep && isNote(r,nf)).forEach(r=>{
+      const k=r.map(s=>s.t).join(''); if(!seen.has(k)){ seen.add(k); note.push(r); }
+    });
+  });
+  // 註起始預設沿用原檔（註的第一列距地線多遠；騎在線上時是負的）
+  NOTEY = note.length ? +(Math.min(...note.map(r=>r.y))-bottomY).toFixed(1) : 0;
   noteY.value = NOTEY; noteY.parentElement.style.display = note.length?'':'none';
 
   rows=[]; units=[]; breaks=[]; sel.clear(); undoS=[]; redoS=[]; selSeg.clear();
   avgPg.clear(); locks.clear(); minLH=0; dragI=lastI=null;
   all.forEach(pg=>{
-    const body=pg.filter(r=>r.y>sep && r.y<=bottomY);
+    const nf=noteFrom(pg);
+    const body=pg.filter(r=>r.y>sep && r.y<=bottomY && !isNote(r,nf));
     rows.push(...body); units.push(...body.map(r=>[r]));
     breaks.push(units.length);
   });
@@ -452,7 +461,7 @@ function render(){
     const n=nlines(start,end);
     const last=pi===breaks.length-1;
     // 表尾註跟著表格結尾走：只畫在最後一頁，整塊平移到「地線 + 註起始」，內部行距不變
-    const ndy = note.length ? bottomY+NOTEY-note[0].y : 0;
+    const ndy = note.length ? bottomY+NOTEY-Math.min(...note.map(r=>r.y)) : 0;
     if(last) note.forEach((r,ri)=>halves.forEach((h,k)=>
       h.insertAdjacentHTML('beforeend', segs(r, 0, false, 0, ndy, `n,0,${ri}`, k))));
     // 勾「平均列高」＝這頁的列平均分佈到表身底端（bodyBot）；
