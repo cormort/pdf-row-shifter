@@ -466,21 +466,23 @@ function render(){
     const ndy = note.length ? bottomY+NOTEY-Math.min(...note.map(r=>r.y)) : 0;
     if(last) note.forEach((r,ri)=>halves.forEach((h,k)=>
       h.insertAdjacentHTML('beforeend', segs(r, 0, false, 0, ndy, `n,0,${ri}`, k))));
-    // 勾「平均列高」＝這頁的列平均分佈到表身底端（bodyBot）；
+    // 末頁列能排到哪裡：地線，但註若騎在地線上（註起始為負）就再退一個原行高，
+    // 否則最後一列會壓在註上面（平均列高把列拉到底時最明顯）
+    const noteTop = last&&note.length ? Math.min(...note.map(r=>r.y))+ndy : Infinity;
+    // 註在地線下方就不必退讓，排到地線為止
+    const botLimit = noteTop>bodyBot ? bodyBot : Math.min(bodyBot, noteTop-LH);
+    // 勾「平均列高」＝這頁的列平均分佈到表身底端；
     // 沒勾時維持原行為：非最後一頁對齊「最滿那頁」的底端 fillY，最後一頁保留原行高。
     const avg = avgPg.has(pi), sp=Math.max(1,n-1);
-    const lh = Math.max(minLH, avg ? (bodyBot-bodyTop)/sp
+    const lh = Math.max(minLH, avg ? (botLimit-bodyTop)/sp
                              : !last ? (fillY-bodyTop)/sp
-                                     : Math.min(LH,(bodyBot-bodyTop)/sp));
+                                     : Math.min(LH,(botLimit-bodyTop)/sp));
     // 「合計貼地線」：最後一頁列不滿時，尾端那幾列合計／總計整塊沉到地線上方，
     // 中間留白；其餘列位置與行距都不動（跟「平均列高」把整頁拉開不同）
     const pg=units.slice(start,end);
     const isTot=u=>/^[\s　]*[合總][\s　]*計/.test(u[0].map(s=>s.t).join(''));
     let tot=0; if(last && sink.checked) while(tot<pg.length && isTot(pg[pg.length-1-tot])) tot++;
-    // 註可能騎在地線上（註起始為負），合計沉到地線就會壓到它：下限再退到註的上一列
-    const noteTop = note.length ? Math.min(...note.map(r=>r.y))+ndy : Infinity;
-    const floor = Math.min(bodyBot, noteTop-lh);
-    const sunk = tot ? Math.max(0, floor-(bodyTop+(n-1)*lh)) : 0;
+    const sunk = tot ? Math.max(0, botLimit-(bodyTop+(n-1)*lh)) : 0;
     let li=0;
     pg.forEach((u,i)=>{
       const dy = i>=pg.length-tot ? sunk : 0;
