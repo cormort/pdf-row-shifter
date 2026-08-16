@@ -125,8 +125,12 @@ let W=595,pageW=595,H=842, frame=[], head=[], rows=[], units=[], breaks=[], PADT
 const sel=new Set();
 
 let buf=null;
-f.onchange = e => { buf=e.target.files[0]; load(); };
-spread.onchange = () => buf && load();
+// load() 中間有多個 await，連續換檔／切對開會兩份同時跑、互相蓋掉全域狀態（列數、行高全亂）。
+// 排隊跑，最後一次的結果就是畫面上的結果。
+let loading=Promise.resolve();
+const queueLoad=()=>{ loading=loading.then(load, load).catch(e=>console.error(e)); };
+f.onchange = e => { buf=e.target.files[0]; queueLoad(); };
+spread.onchange = () => buf && queueLoad();
 padT.oninput = padB.oninput = () => { PADT=+padT.value||0; PADB=+padB.value||0; units.length && relayout(); };
 guide.onchange = () => units.length && render();
 minLh.oninput = () => { minLH=+minLh.value||0; units.length && render(); };
@@ -214,19 +218,26 @@ function lines(c,H,ft={}){
     .sort((a,b)=>a.y-b.y);
   const out=[]; let cur=null;
   for(const it of its){
-    if(!cur || it.y-cur.y>3){ cur={y:it.y, segs:[]}; out.push(cur); }
+    // 同一列裡中文與數字的基線常常差好幾 pt（正黑與 Times 的垂直對位不同，實測 3.26pt），
+    // 固定 3pt 會把一列切成兩列、行高中位數整個崩掉。門檻改成跟字級走：
+    // 半個字級遠比列距（≥ 一個字級）小，切得開換行，又併得回同列的中文與數字。
+    if(!cur || it.y-cur.y>rowTol(cur.sz,it.sz)){ cur={y:it.y, sz:it.sz, segs:[]}; out.push(cur); }
+    else cur.sz=Math.max(cur.sz,it.sz);
     cur.segs.push(it);
   }
   return out.map(r=>Object.assign(r.segs.sort((a,b)=>a.x-b.x),{y:r.y}));
 }
 const shift=(r,dx)=>Object.assign(r.map(s=>({...s,x:s.x+dx})),{y:r.y});
+// 分列門檻：至少 3pt，字級大的表就跟著放寬到半個字級
+const rowTol=(a,b)=>Math.max(3, Math.max(a||0,b||0)*.5);
+const rowSz=r=>Math.max(0,...r.map(s=>s.sz||0));
 // 對開時左右兩半各自分好列，這裡再依 y 把同一列的左右內容併起來
 function merge(rs){
   rs.sort((a,b)=>a.y-b.y);
   const out=[];
   for(const r of rs){
     const p=out[out.length-1];
-    if(p && r.y-p.y<3) p.push(...r);
+    if(p && r.y-p.y<rowTol(rowSz(p),rowSz(r))) p.push(...r);
     else out.push(Object.assign([...r],{y:r.y}));
   }
   return out.map(r=>Object.assign(r.sort((a,b)=>a.x-b.x),{y:r.y}));
@@ -439,7 +450,7 @@ function render(){
         e.style.cssText=`left:0;top:${bodyTop+li*lh-lh*.8}pt;width:100%;height:${u.length*lh}pt`;
         e.draggable=!editMode.checked;   // 編輯模式下不拖曳，否則點字會變成拖列
       e.dataset.i=start+i;
-        e.innerHTML=u.map((r,j)=>segs(r,0,true,0,j*lh+lh*.8,`u,${start+i},${j}`,k)).join('');
+        e.innerHTML=u.map((r,j)=>segs(r,0,true,0,j*lh+lh*.8,`u,${start+i},${j}`,k,lh/LH)).join('');
         h.appendChild(e);
       });
       li+=u.length;
@@ -493,12 +504,13 @@ function move(pi,d){
 
 const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;');
 // half = 只輸出落在第幾個半頁的片段，x 也換算成該半頁的座標
-function segs(r, top, rel, pgno, dy=0, path='', half=0){
+// k = 列高壓縮比，用來等比縮放同列內部的基線落差（中文比數字低幾 pt 那種）
+function segs(r, top, rel, pgno, dy=0, path='', half=0, k=1){
   // 地線以下（頁尾）孤立的純數字視為頁碼，換成新頁次（對開時左右各自算）
   const pn=s=>pgno&&r.y>bottomY&&r.length<=2&&/^\d+$/.test(s.t);
   const txt=s=>pn(s) ? String(pgno+Math.floor(s.x/pageW)) : s.t;
   return r.map((s,k)=>[s,k]).filter(([s])=>Math.floor(s.x/pageW)===half)
-    .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy:s.y)-baseOff(s.sz,s.b,s.s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
+    .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy+(s.y-r.y)*k:s.y)-baseOff(s.sz,s.b,s.s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
 }
 
 // 系統字型的字寬跟原檔內嵌字型不同，數字排出來會比原本寬、壓到欄線上。
