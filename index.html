@@ -19,9 +19,9 @@
   #ctl .lbl{color:var(--dim)}
   #ctl .lbl b{font-weight:600;color:var(--ink)}
   /* 編輯文字是「模式」不是選項，開著時整個 label 變橘底，免得使用者忘了自己還在編輯模式 */
-  #ctl label:has(#editMode){padding:2px 7px;border-radius:6px;transition:.15s}
-  #ctl label:has(#editMode:checked){background:#fbbc04;color:#22252b;font-weight:600}
-  #ctl label:has(#editMode:checked) input{accent-color:#22252b}
+  /* 編輯文字一律上橘底，讓它在工具列裡一眼找得到（不是狀態指示） */
+  #edLbl{padding:2px 7px;border-radius:6px;background:#fbbc04;color:#22252b;font-weight:600}
+  #edLbl input{accent-color:#22252b}
   /* 復原／重做：能按時才上色，灰掉就是沒東西可還原 */
   #bu:not(:disabled),#br:not(:disabled){color:var(--acc);border-color:#b9cdf5;font-weight:700}
   #ctl .pri{background:var(--acc);border-color:var(--acc);color:#fff}
@@ -122,7 +122,7 @@
     <button onclick="align('col')" title="依欄線置中">⊞</button>
   </span>
   <span class="g">
-    <label title="點格子直接改字"><input type="checkbox" id="editMode"> 編輯文字</label>
+    <label id="edLbl" title="點格子直接改字"><input type="checkbox" id="editMode"> 編輯文字</label>
     <button class="pri" onclick="print()">列印 / 存成 PDF</button>
   </span>
   <span id="msg"></span>
