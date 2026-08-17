@@ -18,6 +18,12 @@
   #ctl input[type=file]::file-selector-button:hover{border-color:var(--acc);color:var(--acc)}
   #ctl .lbl{color:var(--dim)}
   #ctl .lbl b{font-weight:600;color:var(--ink)}
+  /* 編輯文字是「模式」不是選項，開著時整個 label 變橘底，免得使用者忘了自己還在編輯模式 */
+  #ctl label:has(#editMode){padding:2px 7px;border-radius:6px;transition:.15s}
+  #ctl label:has(#editMode:checked){background:#fbbc04;color:#22252b;font-weight:600}
+  #ctl label:has(#editMode:checked) input{accent-color:#22252b}
+  /* 復原／重做：能按時才上色，灰掉就是沒東西可還原 */
+  #bu:not(:disabled),#br:not(:disabled){color:var(--acc);border-color:#b9cdf5;font-weight:700}
   #ctl .pri{background:var(--acc);border-color:var(--acc);color:#fff}
   #ctl .pri:hover{background:#3b78e7;border-color:#3b78e7;color:#fff}
   #msg{margin-left:auto;color:var(--dim);font-variant-numeric:tabular-nums}
@@ -543,6 +549,8 @@ function render(){
         // 框往上抬 0.8 行，讓可點擊範圍蓋住文字本身而不是它下面那行
         e.style.cssText=`left:0;top:${bodyTop+li*lh+dy-lh*.8}pt;width:100%;height:${u.length*lh}pt`;
         e.draggable=!editMode.checked;   // 編輯模式下不拖曳，否則點字會變成拖列
+        // 拖曳是「重排」，跨頁時次頁會遞補一列回來；要真的把列推到下頁得用頁間按鈕
+        e.title='拖曳＝與目標列交換位置（跨頁時次頁會遞補一列回來）\n要把最後一列推到下頁，請用頁與頁之間的「↓ 最後一列推到下頁」';
       e.dataset.i=start+i;
         e.innerHTML=u.map((r,j)=>segs(r,0,true,0,j*lh+lh*.8,`u,${start+i},${j}`,k,lh/LH)).join('');
         h.appendChild(e);
