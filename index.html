@@ -364,9 +364,11 @@ async function getFrame(pg,H){
         const x=Math.min(x0,x1), w=Math.abs(x1-x0), t=H-Math.max(y0,y1), h=Math.abs(y1-y0);
         px=x1; py=y1;
         // 這類 PDF 的框線是「很扁的矩形」；長寬都大的是色塊（整頁底色），不是線
-        if(Math.min(w,h)>2) continue;
+        // 門檻放到 4pt：本工具自己列印出來的 PDF 再丟回來時，2pt 的天地線會被 Chrome
+        // 寫成 2.25pt 的矩形，卡在 2pt 會整條天地線被當色塊丟掉，表身變成 0 列
+        if(Math.min(w,h)>4) continue;
         // 扁矩形當線，厚度就是它的短邊（例：這類公文表的框線是 0.75pt）
-        if(h<=2) out.push({x,y:t+h/2,w,h:0,t:h||.5});
+        if(h<=4) out.push({x,y:t+h/2,w,h:0,t:h||.5});
         else out.push({x:x+w/2,y:t,w:0,h,t:w||.5});
         continue; }
       else k+=cm===OPS.curveTo?6:2;
