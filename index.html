@@ -137,6 +137,7 @@
     <span class="lbl">選取對象</span>
     <label><input type="radio" name="cat" value="t" checked> 文字方塊</label>
     <label><input type="radio" name="cat" value="l"> 線條</label>
+    <label id="fnEd" title="選到文字方塊才能改">字型<select id="fontSel"></select></label>
     <label id="lnEd" title="選到線條才能改">線 長<input type="number" id="lnLen" step="0.5" style="width:4.8em">
       粗<input type="number" id="lnTh" step="0.25" min="0.25" style="width:4em">pt</label>
     <button id="delObj" title="刪除選取物件（Delete）">刪除</button>
@@ -475,8 +476,8 @@ function lnBox(l,k){
   const t=th(l), x=l.x-k*pageW, tp=Math.max(1,snapPx(t));
   // 長度方向也吸到整數像素，再兩端各伸出半個線寬（至少 1px）——PDF 的線是 butt cap，
   // 橫線畫到直線的「中心」就停了，加上兩軸各自吸附的捨入誤差，交接處會露出缺口。
-  // 只有真的接到別條線的那一端才伸（capEnds 先標好），孤立的端點維持原長。
-  const cap=Math.max(1,Math.round(tp/2)), c0=l.c0?cap:0, c1=l.c1?cap:0;
+  // 只伸到相接那條線的外緣為止（capEnds 先算好），孤立的端點維持原長。
+  const c0=l.c0||0, c1=l.c1||0;                   // capEnds 算好的兩端延伸量（px）
   const px=(a,b)=>[snapPx(a)-c0, snapPx(a+b)-snapPx(a)+c0+c1];   // 先算兩端再相減，避免長度飄移
   if(l.w){ const [L,Wd]=px(x,l.w);
     return `left:${L}px;top:${snapPx(l.y-t/2)}px;width:${Wd}px;height:${tp}px`; }
@@ -484,16 +485,21 @@ function lnBox(l,k){
   return `left:${snapPx(x-t/2)}px;top:${T}px;width:${tp}px;height:${Ht}px`;
 }
 
-// 標出每條線的兩端有沒有碰到垂直向的線（碰到才需要補交接處的缺口）。
+// 算出每條線兩端該延伸多少 px：剛好補到相接那條線的外緣，不多也不少。
+// 伸「半個自己的線寬」會在細線交接處凸出去（放大看得到），所以要看對方的粗細。
 // ponytail: 每頁百來條線，直接兩兩比對就夠快；線多到有感再換掃描線
 function capEnds(ls){
   const hs=ls.filter(l=>l.w), vs=ls.filter(l=>l.h);
+  const lo=o=> o.w ? snapPx(o.y-th(o)/2) : snapPx(o.x-th(o)/2);   // 對方線的近端外緣（px）
+  const hi=o=> lo(o)+Math.max(1,snapPx(th(o)));                   // 遠端外緣
   ls.forEach(l=>{
     const perp = l.w?vs:hs;
-    const hit=(x,y)=>perp.some(o=> o.w ? (Math.abs(o.y-y)<2 && x>o.x-2 && x<o.x+o.w+2)
-                                       : (Math.abs(o.x-x)<2 && y>o.y-2 && y<o.y+o.h+2));
-    l.c0 = hit(l.x, l.y);
-    l.c1 = l.w ? hit(l.x+l.w, l.y) : hit(l.x, l.y+l.h);
+    const near=(x,y)=>perp.find(o=> o.w ? (Math.abs(o.y-y)<2 && x>o.x-2 && x<o.x+o.w+2)
+                                        : (Math.abs(o.x-x)<2 && y>o.y-2 && y<o.y+o.h+2));
+    const a=l.w?l.x:l.y, b=a+(l.w?l.w:l.h);
+    const o0=near(l.x, l.y), o1=l.w?near(l.x+l.w, l.y):near(l.x, l.y+l.h);
+    l.c0 = o0 ? Math.max(0, snapPx(a)-lo(o0)) : 0;
+    l.c1 = o1 ? Math.max(0, hi(o1)-snapPx(b)) : 0;
   });
 }
 function status(){
@@ -863,6 +869,25 @@ function doPrint(){
   fontWarned=true; print();
 }
 
+// ── 換字型：只給常見的那幾套，選單一律列出來，本機沒裝的標 ⚠（在別台機器印還是對的） ──
+// 字型堆疊一律用單引號：它會被塞進 style="…" 屬性裡，雙引號會把屬性提前結束掉
+const FONTS=[['微軟正黑體',"'微軟正黑體','Microsoft JhengHei',sans-serif"],
+             ['標楷體',"'標楷體','DFKai-SB','BiauKai',serif"],
+             ['新細明體',"'新細明體','PMingLiU','MingLiU',serif"],
+             ['Times New Roman',"'Times New Roman',Times,serif"],
+             ['Arial',"Arial,Helvetica,sans-serif"]];
+const famOf = n => (FONTS.find(f=>f[0]===n)||[])[1];
+fontSel.innerHTML='<option value="">（原樣）</option>'
+  + FONTS.map(([n])=>`<option value="${n}">${n}${hasFont(n)?'':' ⚠本機無'}</option>`).join('');
+fontSel.onchange = () => {
+  const ids=[...fsels].filter(id=>catOf(id)==='t');
+  if(!ids.length) return;
+  fpush();
+  // 換了字型，原檔字寬就不適用了（不清掉會被 fitWidths 壓回舊寬度，等於白換）
+  ids.forEach(id=>{ const o=fobj(id); o.f=fontSel.value||undefined; o.w=0; });
+  renderFree();
+};
+
 // ── 自由編輯模式 ─────────────────────────────────────────────
 // 完全不碰分列／分頁／排序：每一頁原樣攤開，文字方塊（每個 PDF 文字片段）與線條
 // 各自是可搬可改的獨立物件。兩類用「選取對象」互斥選取，免得改線時誤拖到字。
@@ -913,7 +938,7 @@ function renderFree(){
     pageW=p.w;                                        // lnBox 用得到（自由模式一頁一版，k=0）
     capEnds(p.l);                                     // 線被搬過／改過長度，接合狀態要重算
     el.innerHTML = p.l.map((l,i)=>`<div class=ln data-o="l,${pi},${i}" style="${lnBox(l,0)}"></div>`).join('')
-      + p.t.map((s,i)=>`<span class=seg data-o="t,${pi},${i}" ${s.w?`data-w="${s.w}"`:''} style="left:${s.x}pt;top:${ftop(s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(s.t)}</span>`).join('');
+      + p.t.map((s,i)=>`<span class=seg data-o="t,${pi},${i}" ${s.w?`data-w="${s.w}"`:''} style="left:${s.x}pt;top:${ftop(s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.f?`;font-family:${famOf(s.f)}`:s.s?';font-family:var(--serif)':''}">${esc(s.t)}</span>`).join('');
     sheet.appendChild(el); out.appendChild(sheet);
   });
   paintFsel(); bindFree(); fitWidths();
@@ -936,6 +961,10 @@ function paintFsel(){
   lnLen.disabled=lnTh.disabled=!one;
   if(one){ lnLen.value=+(one.w||one.h).toFixed(2); lnTh.value=+th(one).toFixed(2); }
   else { lnLen.value=lnTh.value=''; }
+  const ts=[...fsels].filter(id=>catOf(id)==='t');
+  fnEd.style.opacity=ts.length?1:.35; fontSel.disabled=!ts.length;
+  const fs=new Set(ts.map(id=>fobj(id).f||''));
+  fontSel.value = fs.size===1 ? [...fs][0] : '';        // 多選字型不一致時留空白，選了才一起套
   delObj.disabled=!fsels.size; fbu.disabled=!fundoS.length; fbr.disabled=!fredoS.length;
   if(fpages.length) msg.textContent=msg.textContent.replace(/　已選 \d+$/,'')+(fsels.size?`　已選 ${fsels.size}`:'');
 }
