@@ -70,8 +70,10 @@
   body.free.cat-t .ln{pointer-events:none}
   body.free.cat-l .seg{pointer-events:none}
   body.free .seg:hover,body.free .ln:hover{outline:1px dotted #4285f4}
+  #band{position:fixed;border:1px solid #ea4335;background:#ea433522;pointer-events:none;z-index:9}
   .fsel{outline:1px solid #ea4335!important;outline-offset:1px;background:#fce8e6cc}
-  @media print{.fsel{outline:none!important;background:none}}
+  @media print{.fsel,body.free .seg,body.free .ln{outline:none!important;background:none}
+                body.free .ln{background:#000}}
   body.free #ctl .tbl,body:not(.free) #freeG{display:none}
   .gd{position:absolute;left:0;width:100%;border-top:1px dashed #ea4335;pointer-events:none}
   @media print{.gd{display:none}}
@@ -426,6 +428,9 @@ function mergeLines(ls){
         if(blo>hi+.01) break;                    // 已排序，再往後只會更遠
         const bs=ori? b.y : b.x, be=bs+(ori? b.h : b.w);
         if(be<s-.01 || bs>e+.01) continue;       // 長度方向沒交集，不是同一條
+        // 只併「同一條線的兩半」：併起來不能比原本較長的那條更長。
+        // 不然一條短粗線碰到一條長細線就會被拉成整條粗線，交接處凸出去。
+        if(Math.max(e,be)-Math.min(s,bs) > Math.max(e-s, be-bs)+1) continue;
         lo=Math.min(lo,blo); hi=Math.max(hi,bhi); s=Math.min(s,bs); e=Math.max(e,be);
         used[j]=true;
       }
@@ -476,9 +481,9 @@ function lnBox(l,k){
   const t=th(l), x=l.x-k*pageW, tp=Math.max(1,snapPx(t));
   // 長度方向也吸到整數像素，再兩端各伸出半個線寬（至少 1px）——PDF 的線是 butt cap，
   // 橫線畫到直線的「中心」就停了，加上兩軸各自吸附的捨入誤差，交接處會露出缺口。
-  // 只伸到相接那條線的外緣為止（capEnds 先算好），孤立的端點維持原長。
+  // 兩端一律切齊相接那條線的外緣（capEnds 先算好，過長就縮），孤立的端點維持原長。
   const c0=l.c0||0, c1=l.c1||0;                   // capEnds 算好的兩端延伸量（px）
-  const px=(a,b)=>[snapPx(a)-c0, snapPx(a+b)-snapPx(a)+c0+c1];   // 先算兩端再相減，避免長度飄移
+  const px=(a,b)=>[snapPx(a)-c0, Math.max(1, snapPx(a+b)-snapPx(a)+c0+c1)];   // 先算兩端再相減，避免長度飄移
   if(l.w){ const [L,Wd]=px(x,l.w);
     return `left:${L}px;top:${snapPx(l.y-t/2)}px;width:${Wd}px;height:${tp}px`; }
   const [T,Ht]=px(l.y,l.h);
@@ -494,12 +499,15 @@ function capEnds(ls){
   const hi=o=> lo(o)+Math.max(1,snapPx(th(o)));                   // 遠端外緣
   ls.forEach(l=>{
     const perp = l.w?vs:hs;
-    const near=(x,y)=>perp.find(o=> o.w ? (Math.abs(o.y-y)<2 && x>o.x-2 && x<o.x+o.w+2)
-                                        : (Math.abs(o.x-x)<2 && y>o.y-2 && y<o.y+o.h+2));
+    // 兩條垂線靠得很近時挑軸心最近的那條，挑錯會補到隔壁去
+    const near=(x,y)=>perp.filter(o=> o.w ? (Math.abs(o.y-y)<2 && x>o.x-2 && x<o.x+o.w+2)
+                                          : (Math.abs(o.x-x)<2 && y>o.y-2 && y<o.y+o.h+2))
+                          .sort((p,q)=>Math.abs(p.w?p.y-y:p.x-x)-Math.abs(q.w?q.y-y:q.x-x))[0];
     const a=l.w?l.x:l.y, b=a+(l.w?l.w:l.h);
     const o0=near(l.x, l.y), o1=l.w?near(l.x+l.w, l.y):near(l.x, l.y+l.h);
-    l.c0 = o0 ? Math.max(0, snapPx(a)-lo(o0)) : 0;
-    l.c1 = o1 ? Math.max(0, hi(o1)-snapPx(b)) : 0;
+    // 可正可負：原檔畫過頭的（端點已越過對方外緣）就往回縮，一律切齊外緣
+    l.c0 = o0 ? snapPx(a)-lo(o0) : 0;
+    l.c1 = o1 ? hi(o1)-snapPx(b) : 0;
   });
 }
 function status(){
@@ -1010,6 +1018,29 @@ function bindFree(){
     if(el.classList.contains('seg')) el.ondblclick=()=>freeEdit(el);
   });
 }
+
+// 框選：在頁面空白處按住左鍵拉出方框，碰到的物件一起選（Ctrl/⌘＝加選）
+out.addEventListener('pointerdown', ev=>{
+  if(!freeMode.checked || ev.button || ev.target.closest('[data-o]')) return;
+  ev.preventDefault();
+  const keep=(ev.metaKey||ev.ctrlKey)?new Set(fsels):new Set(); fsels=new Set(keep); paintFsel();
+  const sx=ev.clientX, sy=ev.clientY;
+  const b=document.createElement('div'); b.id='band'; document.body.appendChild(b);
+  const cat=document.body.classList.contains('cat-l')?'l':'t';
+  const mv=e=>{
+    const x=Math.min(sx,e.clientX), y=Math.min(sy,e.clientY),
+          w=Math.abs(e.clientX-sx), h=Math.abs(e.clientY-sy);
+    b.style.cssText=`left:${x}px;top:${y}px;width:${w}px;height:${h}px`;
+    out.querySelectorAll(`[data-o^="${cat},"]`).forEach(el=>{
+      const r=el.getBoundingClientRect();
+      const hit = r.right>=x && r.left<=x+w && r.bottom>=y && r.top<=y+h;
+      hit ? fsels.add(el.dataset.o) : keep.has(el.dataset.o)||fsels.delete(el.dataset.o);
+    });
+    paintFsel();
+  };
+  const up=()=>{ b.remove(); removeEventListener('pointermove',mv); removeEventListener('pointerup',up); };
+  addEventListener('pointermove',mv); addEventListener('pointerup',up);
+});
 
 function freeEdit(el){
   if(el.isContentEditable) return;
