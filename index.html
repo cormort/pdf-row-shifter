@@ -135,8 +135,8 @@
     <button onclick="ungroup()" title="解除選取列的群組">解除群組</button>
     <button onclick="sel.clear();render()" title="取消目前的列選取">取消選取</button>
   </span>
-  <span class="g tbl" title="按住修飾鍵點格子選取，再按對齊鈕">
-    <span class="lbl">對齊 <b id="kAlt">Alt</b>＋點</span>
+  <span class="g" id="alignG" title="表格模式：按住修飾鍵點格子選取；自由編輯：直接選文字方塊。再按對齊鈕">
+    <span class="lbl">對齊 <span class="tbl"><b id="kAlt">Alt</b>＋點</span></span>
     <button onclick="align('l')" title="靠左對齊">⇤</button>
     <button onclick="align('c')" title="水平置中">⇔</button>
     <button onclick="align('r')" title="靠右對齊">⇥</button>
@@ -150,10 +150,12 @@
     <label id="fnEd" title="選到文字方塊才能改">字型<select id="fontSel"></select></label>
     <label id="lnEd" title="選到線條才能改">線 長<input type="number" id="lnLen" step="0.5" style="width:4.8em">
       粗<input type="number" id="lnTh" step="0.25" min="0.25" style="width:4em">pt</label>
+    <button onclick="alignLine(0)" title="選取的線拉到同一個起點（左端／上端），另一端不動">齊頭</button>
+    <button onclick="alignLine(1)" title="選取的線拉到同一個終點（右端／下端），另一端不動">齊尾</button>
     <button id="delObj" title="刪除選取物件（Delete）">刪除</button>
     <button onclick="fundoF()" id="fbu" title="復原">↩</button>
     <button onclick="fredoF()" id="fbr" title="重做">↪</button>
-    <span class="lbl">拖曳搬移・雙擊改字・方向鍵微調（Shift 大步）</span>
+    <span class="lbl">拖曳搬移・線兩端可拉長度・雙擊改字・方向鍵微調（Shift 大步）</span>
   </span>
   <span class="g">
     <input id="fq" placeholder="搜尋文字" style="font:inherit;padding:2px 6px;border:1px solid var(--line);border-radius:5px;width:9em">
@@ -833,30 +835,49 @@ function fitWidths(){
 
 // ── 對齊：⌥ 點格選取（可多選），再按對齊鈕，像 PPT 對齊文字方塊 ──
 const selSeg=new Set();
-const PT=el=>el.getBoundingClientRect().width / (out.querySelector('.page').getBoundingClientRect().width/pageW);
+const PT=el=>{ const pg=el.closest('.page');
+  return el.getBoundingClientRect().width / (pg.getBoundingClientRect().width/parseFloat(pg.style.width)); };
 
 function align(mode){
+  if(freeMode.checked) return alignFree(mode);
   // 對開時同一格會有左右兩份 DOM（右半是複本），依 data-p 去重
   const seen=new Set(), els=[...out.querySelectorAll('.seg.pick')]
     .filter(el=>!seen.has(el.dataset.p) && seen.add(el.dataset.p));
   if(els.length<(mode==='col'?1:2)) return alert(`按住 ${KALT} 點選要對齊的格子，至少兩格`);
   const box=els.map(el=>({p:el.dataset.p, x:seg0(el.dataset.p).x, w:PT(el)}));
-  const L=Math.min(...box.map(b=>b.x)), R=Math.max(...box.map(b=>b.x+b.w));
   push();
-  if(mode==='l') box.forEach(b=>setX(b.p, L));
-  if(mode==='r') box.forEach(b=>setX(b.p, R-b.w));
-  if(mode==='c') box.forEach(b=>setX(b.p, (L+R)/2-b.w/2));
+  alignX(mode, box, (b,x)=>setX(b.p,x), () => frame.filter(l=>l.h).map(l=>l.x));
+  selSeg.clear(); render();
+}
+
+// 自由編輯：對齊目前選取的物件（文字方塊、線條都可以，都是整個搬移）
+function alignFree(mode){
+  const ids=[...fsels];
+  if(ids.length<(mode==='col'?1:2)) return alert('先選要對齊的物件，至少兩個');
+  // 文字方塊的寬度要量畫面（原檔字寬壓縮過），線條直接用自己的長度（直線是 0）
+  const box=ids.map(id=>{ const o=fobj(id);
+    return {o, pi:+id.split(',')[1], x:o.x, w:o.sz?PT(fel(id)):(o.w||0)}; });
+  fpush();
+  alignX(mode, box, (b,x)=>b.o.x=x, b => fpages[b.pi].l.filter(l=>l.h).map(l=>l.x));
+  renderFree();
+}
+
+// 兩種模式共用的水平對齊運算：box 是 {x,w} 陣列，setx 寫回，cols 給「依欄線置中」用
+function alignX(mode, box, setx, cols){
+  const L=Math.min(...box.map(b=>b.x)), R=Math.max(...box.map(b=>b.x+b.w));
+  if(mode==='l') box.forEach(b=>setx(b, L));
+  if(mode==='r') box.forEach(b=>setx(b, R-b.w));
+  if(mode==='c') box.forEach(b=>setx(b, (L+R)/2-b.w/2));
   if(mode==='d'){                                  // 中心點等距分佈，頭尾不動
     box.sort((a,b)=>a.x-b.x);
     const c0=box[0].x+box[0].w/2, cN=box.at(-1).x+box.at(-1).w/2;
-    box.forEach((b,i)=>setX(b.p, c0+(cN-c0)*i/(box.length-1)-b.w/2));
+    box.forEach((b,i)=>setx(b, c0+(cN-c0)*i/(box.length-1)-b.w/2));
   }
   if(mode==='col') box.forEach(b=>{                // 以左右兩條欄線置中
-    const vs=frame.filter(l=>l.h).map(l=>l.x).sort((a,b)=>a-b);
+    const vs=cols(b).sort((a,b)=>a-b);
     const lo=Math.max(...vs.filter(v=>v<=b.x+2), 0), hi=Math.min(...vs.filter(v=>v>=b.x+b.w-2), W);
-    setX(b.p, (lo+hi)/2-b.w/2);
+    setx(b, (lo+hi)/2-b.w/2);
   });
-  selSeg.clear(); render();
 }
 // data-p = 「u|h|n, 群組/頁索引, 列, 段」；n（表尾註）沒有分頁維度，a 恆為 0
 const owner=(k,a)=> k==='u' ? units[a] : k==='n' ? note : head[a];
@@ -1114,14 +1135,22 @@ function fredoF(){ if(!fredoS.length) return; fundoS.push(fsnap()); fpages=JSON.
 
 function bindFree(){
   out.querySelectorAll('[data-o]').forEach(el=>{
+    // 線的游標：兩端是拉長度，中間是搬移
+    if(el.classList.contains('ln'))
+      el.onpointermove=ev=>{ const g=endGrab(el,fobj(el.dataset.o),ev);
+        el.style.cursor = !g ? 'move' : fobj(el.dataset.o).w ? 'ew-resize' : 'ns-resize'; };
     el.onpointerdown=ev=>{
       if(el.isContentEditable) return;
       ev.preventDefault();
-      const id=el.dataset.o;
+      const id=el.dataset.o, o=fobj(id);
+      // 端點判定要在 paintFsel 之前算：工具列的文字一變可能多一列，整個版面會往下位移，
+      // 之後再量元素位置就跟按下去的座標對不起來了
+      const grab=el.classList.contains('ln') && endGrab(el,o,ev);
       // 加選用 Ctrl/⌘ 點（Shift 留給拖曳鎖方向）；點沒選過的東西就換成只選它
       if(ev.metaKey||ev.ctrlKey){ fsels.has(id)?fsels.delete(id):fsels.add(id); paintFsel(); return; }
       if(!fsels.has(id)){ fsels.clear(); fsels.add(id); }
       paintFsel();
+      if(grab) return dragEnd(el,o,grab,ev);      // 抓到端點：只拉這一條的長度，不搬整組
       // 多選時整組一起搬，位移量相同
       const grp=[...fsels].map(i=>({el:fel(i), o:fobj(i)})).filter(g=>g.el)
                           .map(g=>({...g, ox:g.o.x, oy:g.o.y}));
@@ -1146,6 +1175,53 @@ function bindFree(){
     };
     if(el.classList.contains('seg')) el.ondblclick=()=>freeEdit(el);
   });
+}
+
+// 線的兩端 6px 內算「拉長度」，回 -1 頭、1 尾、0 中間（太短的線全部當搬移，不然點不到中間）
+function endGrab(el,o,ev){
+  // 用 clientX 減元素位置算，不用 offsetX：offsetX 在合成事件與縮放下不可靠
+  const r=el.getBoundingClientRect();
+  const len=o.w?r.width:r.height, p=o.w?ev.clientX-r.left:ev.clientY-r.top;
+  if(len<20) return 0;
+  return p<6 ? -1 : p>len-6 ? 1 : 0;
+}
+function dragEnd(el,o,grab,ev){
+  const sx=ev.clientX, sy=ev.clientY, ox=o.x, oy=o.y, ow=o.w, oh=o.h;
+  let moved=false; fpush();
+  const mv=e=>{
+    const d=(o.w ? e.clientX-sx : e.clientY-sy)*72/96/zm;
+    if(!moved && Math.abs(d)<.5) return;
+    moved=true;
+    if(grab>0){ o.w ? o.w=Math.max(1,ow+d) : o.h=Math.max(1,oh+d); }
+    else if(o.w){ const nx=Math.min(ox+d, ox+ow-1); o.x=nx; o.w=ow+ox-nx; }
+    else        { const ny=Math.min(oy+d, oy+oh-1); o.y=ny; o.h=oh+oy-ny; }
+    place(el,o);
+  };
+  const up=()=>{
+    removeEventListener('pointermove',mv); removeEventListener('pointerup',up);
+    if(!moved) return fundoS.pop();
+    renderFree();                                 // 長度變了，交接處要重算
+  };
+  addEventListener('pointermove',mv); addEventListener('pointerup',up);
+}
+
+// 齊頭／齊尾：把選取的線拉到同一個起點／終點（另一端不動）；橫線直線各算各的
+function alignLine(tail){
+  const ls=[...fsels].filter(id=>catOf(id)==='l').map(fobj);
+  if(ls.length<2) return alert('先選要對齊的線條，至少兩條');
+  fpush();
+  [1,0].forEach(hz=>{
+    const g=ls.filter(o=>hz ? o.w>0 : !(o.w>0));
+    if(g.length<2) return;
+    const s=o=>hz?o.x:o.y, len=o=>hz?o.w:o.h;
+    const v = tail ? Math.max(...g.map(o=>s(o)+len(o))) : Math.min(...g.map(o=>s(o)));
+    g.forEach(o=>{
+      const L=Math.max(1, tail ? v-s(o) : s(o)+len(o)-v);
+      if(!tail){ hz ? o.x=v : o.y=v; }
+      hz ? o.w=L : o.h=L;
+    });
+  });
+  renderFree();
 }
 
 // 框選：在頁面空白處按住左鍵拉出方框，碰到的物件一起選（Ctrl/⌘＝加選）
