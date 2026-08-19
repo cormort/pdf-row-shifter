@@ -71,6 +71,9 @@
   body.free.cat-l .seg{pointer-events:none}
   body.free .seg:hover,body.free .ln:hover{outline:1px dotted #4285f4}
   #band{position:fixed;border:1px solid #ea4335;background:#ea433522;pointer-events:none;z-index:9}
+  .hit{background:#fff3a3}
+  .cur{background:#ffd54a;outline:1px solid #f59e0b;z-index:6}
+  @media print{.hit,.cur{background:none;outline:none}}
   .fsel{outline:1px solid #ea4335!important;outline-offset:1px;background:#fce8e6cc}
   @media print{.fsel,body.free .seg,body.free .ln{outline:none!important;background:none}
                 body.free .ln{background:#000}}
@@ -91,6 +94,7 @@
     @page{margin:0}   /* 實際紙張尺寸由 load() 依來源 PDF 動態寫入 #pagesize */
     body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
     #ctl,.brk,#drop{display:none}
+    #out{zoom:1}                       /* 畫面縮放只是預覽，印出來一律原尺寸 */
     /* 這裡少一項就會每頁多吐一張空白紙：頁面盒剛好等於 A4，外圍任何留白都會溢位 */
     html,body,#out{width:auto;padding:0;margin:0;overflow:hidden}
     .sheet{display:block;gap:0;margin:0;padding:0;width:auto;min-width:0}   /* 畫面用的 min-width:100% 不能帶進列印，會撐寬版面 */
@@ -146,6 +150,17 @@
     <button onclick="fundoF()" id="fbu" title="復原">↩</button>
     <button onclick="fredoF()" id="fbr" title="重做">↪</button>
     <span class="lbl">拖曳搬移・雙擊改字・方向鍵微調（Shift 大步）</span>
+  </span>
+  <span class="g">
+    <input id="fq" placeholder="搜尋文字" style="font:inherit;padding:2px 6px;border:1px solid var(--line);border-radius:5px;width:9em">
+    <button onclick="step(-1)" title="上一個 (Shift+Enter)">‹</button>
+    <button onclick="step(1)" title="下一個 (Enter)">›</button>
+    <span class="lbl" id="fmsg"></span>
+  </span>
+  <span class="g">
+    <button onclick="fit('w')" title="縮放到符合頁寬（對開表算左右兩頁的總寬）">符合頁寬</button>
+    <button onclick="fit('h')" title="縮放到一頁的高度剛好塞進視窗">符合頁高</button>
+    <button onclick="fit(0)" title="回到原尺寸">100%</button>
   </span>
   <span class="g">
     <label id="edLbl" class="tbl" title="點格子直接改字"><input type="checkbox" id="editMode"> 編輯文字</label>
@@ -648,7 +663,7 @@ function render(){
   const dpr=devicePixelRatio||1, pgs=[...out.querySelectorAll('.page')];
   pgs.forEach(p=>p.style.transform='');
   const tops=pgs.map(p=>p.getBoundingClientRect().top);
-  pgs.forEach((p,i)=>p.style.transform=`translateY(${(Math.round(tops[i]*dpr)-tops[i]*dpr)/dpr}px)`);
+  pgs.forEach((p,i)=>p.style.transform=`translateY(${(Math.round(tops[i]*dpr)-tops[i]*dpr)/dpr/zm}px)`);
   bindDrag(); bindEdit(); fitWidths();
 }
 
@@ -687,12 +702,54 @@ function segs(r, top, rel, pgno, dy=0, path='', half=0, kz=1){
     .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy+(s.y-r.y)*kz:s.y+dy)-baseOff(s.sz,s.b,s.s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
 }
 
+// ── 畫面縮放：只縮預覽，列印一律 100%（見 @media print）──
+// 用 CSS zoom 而非 transform：版面寬高會跟著縮，捲軸範圍才正確。
+// 代價是所有「量畫面 → 換算 pt」的地方都要除以 zm（fitWidths、自由編輯拖曳）。
+let zm=1, fitMode=0;
+function fit(m){
+  fitMode=m;
+  const sh=out.querySelector('.sheet');
+  if(!m || !sh) return setZoom(1);
+  const pgs=[...sh.querySelectorAll('.page')];
+  // 對開表一張 sheet 裡是左右兩頁，寬度要算兩頁加中間 4px 間隙
+  const w=pgs.reduce((a,p)=>a+p.offsetWidth,0)+(pgs.length-1)*4;
+  setZoom(m==='w' ? (out.clientWidth*zm-16)/w
+                  : (innerHeight-ctl.offsetHeight-34)/pgs[0].offsetHeight);
+}
+const setZoom=z=>{ zm=Math.max(.1,Math.min(4,z)); out.style.zoom=zm===1?'':zm; };
+addEventListener('resize',()=>fitMode&&fit(fitMode));
+
+// ── 搜尋：逐個文字方塊比對（PDF 的一段字就是一個 .seg）──
+// ponytail: 不跨方塊比對——原檔常把一句話切成好幾段，跨段比對要先重組全文再對回 DOM，
+// 目前用不到；真的要搜跨段的詞再說。
+let hits=[], hi=-1;
+function doFind(reset=true){
+  out.querySelectorAll('.hit').forEach(e=>e.classList.remove('hit','cur'));
+  const q=fq.value.trim().toLowerCase();
+  hits=[]; if(!q) return fmsg.textContent='';
+  out.querySelectorAll('.seg').forEach(e=>{
+    if(e.textContent.toLowerCase().includes(q)){ e.classList.add('hit'); hits.push(e); }
+  });
+  if(reset || hi>=hits.length) hi=hits.length?0:-1;
+  showHit(reset);
+}
+function showHit(scroll=true){
+  fmsg.textContent = hits.length ? `${hi+1}/${hits.length}` : (fq.value.trim()?'找不到':'');
+  hits.forEach(e=>e.classList.remove('cur'));
+  const e=hits[hi]; if(!e) return;
+  e.classList.add('cur');
+  if(scroll) e.scrollIntoView({block:'center'});
+}
+const step=d=>{ if(!hits.length) return; hi=(hi+d+hits.length)%hits.length; showHit(); };
+fq.oninput=()=>doFind();
+fq.onkeydown=e=>{ e.stopPropagation(); if(e.key==='Enter'){ e.preventDefault(); step(e.shiftKey?-1:1); } };
+
 // 系統字型的字寬跟原檔內嵌字型不同，數字排出來會比原本寬、壓到欄線上。
 // 量完之後把每段橫向壓回原檔寬度（只縮不放，從左緣起算，右對齊的數字才不會跑掉）。
 function fitWidths(){
   const els=[...out.querySelectorAll('.seg[data-w]')];
   const scale=els.map(el=>{
-    const w0=+el.dataset.w, w1=el.getBoundingClientRect().width*72/96;
+    const w0=+el.dataset.w, w1=el.getBoundingClientRect().width*72/96/zm;
     return w0>0 && w1>w0*1.005 ? w0/w1 : 0;                 // 先全部量完再寫，避免反覆重排
   });
   els.forEach((el,i)=>{ if(scale[i]){
@@ -700,6 +757,8 @@ function fitWidths(){
     el.style.transformOrigin='left top';
     el.style.transform=`scaleX(${scale[i].toFixed(4)})`;
   }});
+  if(fitMode) fit(fitMode);            // 換檔／切對開後頁寬變了，縮放要重算
+  if(fq.value.trim()) doFind(false);  // DOM 重建過，命中標記要重標
 }
 
 // ── 對齊：⌥ 點格選取（可多選），再按對齊鈕，像 PPT 對齊文字方塊 ──
@@ -999,7 +1058,7 @@ function bindFree(){
       const sx=ev.clientX, sy=ev.clientY;
       let moved=false, axis=null; fpush();
       const mv=e=>{
-        let dx=(e.clientX-sx)*72/96, dy=(e.clientY-sy)*72/96;
+        let dx=(e.clientX-sx)*72/96/zm, dy=(e.clientY-sy)*72/96/zm;
         if(!moved && Math.abs(dx)+Math.abs(dy)<.5) return;
         moved=true;
         // Shift＝鎖方向：以按下時位移較大的那軸為準，另一軸歸零
@@ -1079,7 +1138,8 @@ delObj.onclick = () => {
 };
 
 addEventListener('keydown', e=>{
-  if(!freeMode.checked || !fsels.size || document.activeElement?.isContentEditable) return;
+  const ae=document.activeElement;
+  if(!freeMode.checked || !fsels.size || ae?.isContentEditable || /INPUT|SELECT|TEXTAREA/.test(ae?.tagName)) return;
   if(e.key==='Delete'||e.key==='Backspace'){ e.preventDefault(); return delObj.onclick(); }
   const d=e.shiftKey?5:.5;
   const v={ArrowLeft:[-d,0],ArrowRight:[d,0],ArrowUp:[0,-d],ArrowDown:[0,d]}[e.key];
