@@ -71,6 +71,10 @@
   body.free.cat-l .seg{pointer-events:none}
   body.free .seg:hover,body.free .ln:hover{outline:1px dotted #4285f4}
   #band{position:fixed;border:1px solid #ea4335;background:#ea433522;pointer-events:none;z-index:9}
+  /* 檢查標記：只在畫面上，列印不出現 */
+  body.chk .ovl{outline:1.5px solid #ea4335;background:#fdd8d5}
+  body.chk .wht{outline:1.5px dashed #9334e6;background:#f3e8fd}
+  @media print{.ovl,.wht{outline:none!important;background:none!important}}
   .hit{background:#fff3a3}
   .cur{background:#ffd54a;outline:1px solid #f59e0b;z-index:6}
   @media print{.hit,.cur{background:none;outline:none}}
@@ -156,6 +160,12 @@
     <button onclick="step(-1)" title="上一個 (Shift+Enter)">‹</button>
     <button onclick="step(1)" title="下一個 (Enter)">›</button>
     <span class="lbl" id="fmsg"></span>
+  </span>
+  <span class="g">
+    <button id="chkB" onclick="chk()" title="標出被線壓到的字，以及原檔是白字／極淡字（印出來不會有標記）">檢查</button>
+    <label title="字框先往內縮這麼多才判定壓線；調大只留下壓得深的">容許<input type="number" id="ovTol" value="0.5" min="0" max="6" step="0.25" style="width:3.6em">pt</label>
+    <label title="原檔填色亮度 ≥ 此值就算白字（255＝純白）；調低會連淺灰字一起抓">白字門檻<input type="number" id="whThr" value="230" min="128" max="255" step="5" style="width:4em"></label>
+    <span class="lbl" id="cmsg"></span>
   </span>
   <span class="g">
     <button onclick="fit('w')" title="縮放到符合頁寬（對開表算左右兩頁的總寬）">符合頁寬</button>
@@ -244,7 +254,7 @@ editMode.onchange = () => { document.body.classList.toggle('edit', editMode.chec
 
 async function load(){
   const doc = await U.getDocument(await buf.arrayBuffer()).promise;
-  srcFonts.clear(); fontWarned=false;
+  srcFonts.clear(); fontWarned=false; paleV=[];
   if(freeMode.checked) return loadFree(doc);
   // 對開：奇數頁是左半、偶數頁是右半，兩頁併成一個「版」（右半的 x 平移一個頁寬）
   const N = spread.checked ? 2 : 1;
@@ -257,7 +267,7 @@ async function load(){
       const dx=k*pageW;
       const c=await pg.getTextContent();
       await pg.getOperatorList();          // 跑過才會把字型載進 commonObjs，粗體資訊在那裡
-      txt.push(...lines(c, H, fonts(pg,c)).map(r=>shift(r,dx)));
+      txt.push(...markPale(lines(c, H, fonts(pg,c)), await pale(pg)).map(r=>shift(r,dx)));
       if(p===1) fr.push(...(await getFrame(pg,H)).map(l=>({...l, x:l.x+dx})));
     }
     W = pageW*N;
@@ -699,7 +709,7 @@ function segs(r, top, rel, pgno, dy=0, path='', half=0, kz=1){
   const pn=s=>pgno&&r.y>bottomY&&r.length<=2&&/^\d+$/.test(s.t);
   const txt=s=>pn(s) ? String(pgno+Math.floor(s.x/pageW)) : s.t;
   return r.map((s,k)=>[s,k]).filter(([s])=>Math.floor(s.x/pageW)===half)
-    .map(([s,k])=>`<span class=seg ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy+(s.y-r.y)*kz:s.y+dy)-baseOff(s.sz,s.b,s.s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
+    .map(([s,k])=>`<span class=seg ${s.hid?`data-lt="${s.hid}"`:''} ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy+(s.y-r.y)*kz:s.y+dy)-baseOff(s.sz,s.b,s.s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
 }
 
 // ── 畫面縮放：只縮預覽，列印一律 100%（見 @media print）──
@@ -713,11 +723,70 @@ function fit(m){
   const pgs=[...sh.querySelectorAll('.page')];
   // 對開表一張 sheet 裡是左右兩頁，寬度要算兩頁加中間 4px 間隙
   const w=pgs.reduce((a,p)=>a+p.offsetWidth,0)+(pgs.length-1)*4;
-  setZoom(m==='w' ? (out.clientWidth*zm-16)/w
-                  : (innerHeight-ctl.offsetHeight-34)/pgs[0].offsetHeight);
+  const avail = m==='w' ? out.clientWidth*zm-16 : innerHeight-ctl.offsetHeight-34;
+  if(avail<40) return;                   // 視窗被縮到看不見（或分頁在背景）時不要亂縮
+  setZoom(avail/(m==='w'?w:pgs[0].offsetHeight));
 }
 const setZoom=z=>{ zm=Math.max(.1,Math.min(4,z)); out.style.zoom=zm===1?'':zm; };
 addEventListener('resize',()=>fitMode&&fit(fitMode));
+
+// ── 檢查：被線壓到的字、原檔的白字／極淡字 ────────────────────────
+// 白字要從 operator list 拿：getTextContent 不帶顏色，而 pdf.js 會把各種顏色空間
+// 都正規化成 setFillRGBColor(0-255)，showText 的 glyph 帶 unicode，湊得出「哪串字是白的」。
+// ponytail: 用字串比對回原本的文字方塊——getTextContent 會併字，索引對不起來（實測差很多）。
+async function pale(pg){
+  const ops=await pg.getOperatorList(), OPS=U.OPS, out=[];
+  let col=[0,0,0], st=[];
+  for(let i=0;i<ops.fnArray.length;i++){
+    const fn=ops.fnArray[i], a=ops.argsArray[i];
+    if(fn===OPS.save) st.push(col);
+    else if(fn===OPS.restore) col=st.pop()||col;
+    else if(fn===OPS.setFillRGBColor) col=[a[0],a[1],a[2]];
+    else if(fn===OPS.showText || fn===OPS.showSpacedText){
+      const lt=Math.min(...col);
+      if(lt<128) continue;                             // 深色字一律不算，門檻拉到底也不會冒出來
+      const t=(a[0]||[]).map(g=>g&&typeof g==='object'?g.unicode||'':'').join('').trim();
+      if(t) out.push({t, lt});
+    }
+  }
+  return out;
+}
+// 把淡色字串比對回文字方塊：原檔一段可能被 pdf.js 併成一段或拆成好幾段，兩邊互相包含就算。
+// ponytail: 只能靠字串——operator list 沒有座標，要算得追 Tm/Td 與字寬，等於自己寫一套排版引擎。
+// 所以同一頁有同樣內容的黑字時會一起標到，門檻與最後判斷交給使用者（工具列的白字門檻）。
+let paleV=[];
+const markPale = (rows,ps) => { ps.forEach(x=>paleV.push(x.lt));
+  if(ps.length) rows.forEach(r=>r.forEach(s=>{
+    const t=s.t.trim();
+    ps.forEach(x=>{ if(x.lt>(s.hid||0) && (x.t.length>1 ? (x.t.includes(t)||t.includes(x.t)) : t===x.t)) s.hid=x.lt; });
+  }));
+  return rows; };
+
+let chkOn=false;
+ovTol.oninput = whThr.oninput = () => chkOn && scan();
+function chk(){ chkOn=!chkOn; document.body.classList.toggle('chk',chkOn); chkB.classList.toggle('pri',chkOn); scan(); }
+function scan(){
+  out.querySelectorAll('.ovl').forEach(e=>e.classList.remove('ovl'));
+  if(!chkOn){ out.querySelectorAll('.wht').forEach(e=>e.classList.remove('wht')); return cmsg.textContent=''; }
+  const thr=+whThr.value||230, tol=(+ovTol.value||0)*96/72;
+  let n=0;
+  out.querySelectorAll('.page').forEach(pgEl=>{
+    const ls=[...pgEl.querySelectorAll('.ln')].map(e=>[e.offsetLeft,e.offsetTop,e.offsetWidth,e.offsetHeight]);
+    if(!ls.length) return;
+    pgEl.querySelectorAll('.seg').forEach(e=>{
+      const sc=+(/scaleX\(([\d.]+)\)/.exec(e.style.transform)||[0,1])[1];
+      const h=e.offsetHeight;
+      // 只算字身（上下各留一截行距），再依容許值往內縮，不然貼著欄線的字每一格都會中
+      const x=e.offsetLeft+tol, w=e.offsetWidth*sc-tol*2, y=e.offsetTop+h*.2+tol, hh=h*.65-tol*2;
+      if(w<=0||hh<=0) return;
+      if(ls.some(([lx,ly,lw,lh])=>lx<x+w && lx+lw>x && ly<y+hh && ly+lh>y)){ e.classList.add('ovl'); n++; }
+    });
+  });
+  let m=0;
+  out.querySelectorAll('[data-lt]').forEach(e=>{ const on=+e.dataset.lt>=thr; e.classList.toggle('wht',on); m+=on; });
+  const pn=paleV.filter(v=>v>=thr).length;
+  cmsg.textContent=`字被線壓到 ${n} 處・原檔白字 ${pn} 段`+(pn&&m!==pn?`（標出 ${m} 處）`:'');
+}
 
 // ── 搜尋：逐個文字方塊比對（PDF 的一段字就是一個 .seg）──
 // ponytail: 不跨方塊比對——原檔常把一句話切成好幾段，跨段比對要先重組全文再對回 DOM，
@@ -759,6 +828,7 @@ function fitWidths(){
   }});
   if(fitMode) fit(fitMode);            // 換檔／切對開後頁寬變了，縮放要重算
   if(fq.value.trim()) doFind(false);  // DOM 重建過，命中標記要重標
+  if(chkOn) scan();
 }
 
 // ── 對齊：⌥ 點格選取（可多選），再按對齊鈕，像 PPT 對齊文字方塊 ──
@@ -977,13 +1047,13 @@ const setCat = v => { document.body.classList.toggle('cat-t', v==='t');
 setCat('t');
 
 async function loadFree(doc){
-  fpages=[]; fsels.clear(); fundoS=[]; fredoS=[];
+  fpages=[]; fsels.clear(); fundoS=[]; fredoS=[]; paleV=[];
   for(let p=1;p<=doc.numPages;p++){
     const pg=await doc.getPage(p), vp=pg.getViewport({scale:1});
     const w=vp.width, h=vp.height;
     const c=await pg.getTextContent();
     await pg.getOperatorList();                       // 跑過才拿得到字型（粗體／襯線）
-    const t=[].concat(...lines(c, h, fonts(pg,c))).map(s=>({...s}));
+    const t=[].concat(...markPale(lines(c, h, fonts(pg,c)), await pale(pg))).map(s=>({...s}));
     fpages.push({w, h, t, l:await getFrame(pg,h)});
   }
   pageW=fpages[0].w; W=pageW; H=fpages[0].h;
@@ -1005,7 +1075,7 @@ function renderFree(){
     pageW=p.w;                                        // lnBox 用得到（自由模式一頁一版，k=0）
     capEnds(p.l);                                     // 線被搬過／改過長度，接合狀態要重算
     el.innerHTML = p.l.map((l,i)=>`<div class=ln data-o="l,${pi},${i}" style="${lnBox(l,0)}"></div>`).join('')
-      + p.t.map((s,i)=>`<span class=seg data-o="t,${pi},${i}" ${s.w?`data-w="${s.w}"`:''} style="left:${s.x}pt;top:${ftop(s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.f?`;font-family:${famOf(s.f)}`:s.s?';font-family:var(--serif)':''}">${esc(s.t)}</span>`).join('');
+      + p.t.map((s,i)=>`<span class=seg ${s.hid?`data-lt="${s.hid}"`:''} data-o="t,${pi},${i}" ${s.w?`data-w="${s.w}"`:''} style="left:${s.x}pt;top:${ftop(s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.f?`;font-family:${famOf(s.f)}`:s.s?';font-family:var(--serif)':''}">${esc(s.t)}</span>`).join('');
     sheet.appendChild(el); out.appendChild(sheet);
   });
   paintFsel(); bindFree(); fitWidths();
