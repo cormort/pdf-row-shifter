@@ -711,14 +711,22 @@ function insertNL(){
   r.setStartAfter(n); r.collapse(true); s.removeAllRanges(); s.addRange(r);
 }
 // half = 只輸出落在第幾個半頁的片段，x 也換算成該半頁的座標
-// 同列內部的基線落差（中文比數字低幾 pt 那種）一律照原檔，不隨列高縮放：
-// 那是字型本身的落差，跟著列高放大就變成「數字整個偏移」。
+// 同列內部的基線落差不隨列高縮放：那是字型本身的落差，跟著列高放大就變成「數字整個偏移」。
 function segs(r, top, rel, pgno, dy=0, path='', half=0){
+  // 同列的數字看起來比最左的中文往下掉，實測有兩個成因，勾「文字置中」時一起修：
+  //   1. 原檔基線本來就有落差（實測數字比中文低 0.75～1.5pt）
+  //   2. 字級／字體不同（中文 11pt 正黑、數字 10pt 明體），共用基線時小字重心偏低
+  // 做法：整列拉到同一條基線 r.y，再讓各段對齊「基準段的字框中線」——
+  // 基準＝列內字級最大的那段（通常是最左的中文）。同字級同字體的列位置不變。
+  // 只調表身列，頁首／表尾註照原檔。
+  const ref = vmid.checked && rel ? r.reduce((a,s)=>s.sz>a.sz?s:a) : null;
+  const cen = ref && baseOff(ref.sz,ref.b,ref.s)-ref.sz/2;
+  const off = s => ref ? cen+s.sz/2 : baseOff(s.sz,s.b,s.s);
   // 地線以下（頁尾）孤立的純數字視為頁碼，換成新頁次（對開時左右各自算）
   const pn=s=>pgno&&r.y>bottomY&&r.length<=2&&/^\d+$/.test(s.t);
   const txt=s=>pn(s) ? String(pgno+Math.floor(s.x/pageW)) : s.t;
   return r.map((s,k)=>[s,k]).filter(([s])=>Math.floor(s.x/pageW)===half)
-    .map(([s,k])=>`<span class=seg ${s.hid?`data-lt="${s.hid}"`:''} ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy+(s.y-r.y):s.y+dy)-baseOff(s.sz,s.b,s.s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
+    .map(([s,k])=>`<span class=seg ${s.hid?`data-lt="${s.hid}"`:''} ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy+(ref?0:s.y-r.y):s.y+dy)-off(s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
 }
 
 // ── 畫面縮放：只縮預覽，列印一律 100%（見 @media print）──
