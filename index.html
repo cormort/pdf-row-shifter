@@ -121,6 +121,7 @@
     <label title="表尾註第一列距地線多遠（只影響註，與上下邊界無關）">註起始<input type="number" id="noteY" value="0" min="-200" max="200" step="1" style="width:3.8em">pt</label>
     <label title="列高再怎麼壓縮都不低於這個值">最小列高<input type="number" id="minLh" value="0" min="0" max="60" step="0.5" style="width:3.8em">pt</label>
     <label title="最後一頁列不滿時，尾端的合計／總計列沉到地線上方，中間留白"><input type="checkbox" id="sink"> 合計貼地線</label>
+    <label title="列高被拉開時，文字落在上下兩列的中間，而不是貼著自己那條基線"><input type="checkbox" id="vmid" checked> 文字置中</label>
     <label title="畫出表身上下界（只在畫面上，不會印出來）"><input type="checkbox" id="guide" checked> 輔助線</label>
   </span>
   <span class="g tbl">
@@ -246,6 +247,7 @@ padT.oninput = padB.oninput = () => { PADT=+padT.value||0; PADB=+padB.value||0; 
 // 註起始＝第一列註距地線的 pt；其餘註列維持彼此的相對距離
 noteY.oninput = () => { NOTEY=+noteY.value||0; units.length && render(); };
 guide.onchange = () => units.length && render();
+vmid.onchange = () => units.length && render();
 minLh.oninput = () => { minLH=+minLh.value||0; units.length && render(); };
 // 全部頁面：有任何一頁還沒平均就全開，都開了就全關
 freeze.onclick = () => { breaks.slice(0,-1).forEach(b=>locks.add(b)); render(); };
@@ -626,6 +628,10 @@ function render(){
                                      : Math.min(LH,(botLimit-bodyTop)/sp));
     // 「合計貼地線」：最後一頁列不滿時，尾端那幾列合計／總計整塊沉到地線上方，
     // 中間留白；其餘列位置與行距都不動（跟「平均列高」把整頁拉開不同）
+    // 列高被拉開時文字仍貼在自己的基線上，看起來就靠在該列下緣；
+    // 把整列往上抬半個「多出來的行距」，文字才落在上下兩列中間。抬升最多半個原行高，
+    // 免得列高拉得很開時第一列衝出表身上界。
+    const cy = vmid.checked ? Math.min((lh-LH)/2, LH*.5) : 0;
     const pg=units.slice(start,end);
     const isTot=u=>/^[\s　]*[合總][\s　]*計/.test(u[0].map(s=>s.t).join(''));
     let tot=0; if(last && sink.checked) while(tot<pg.length && isTot(pg[pg.length-1-tot])) tot++;
@@ -637,12 +643,12 @@ function render(){
         const e=document.createElement('div');
         e.className='row'+(sel.has(start+i)?' sel':'')+(u.length>1?' grp':'');
         // 框往上抬 0.8 行，讓可點擊範圍蓋住文字本身而不是它下面那行
-        e.style.cssText=`left:0;top:${bodyTop+li*lh+dy-lh*.8}pt;width:100%;height:${u.length*lh}pt`;
+        e.style.cssText=`left:0;top:${bodyTop+li*lh+dy-cy-lh*.8}pt;width:100%;height:${u.length*lh}pt`;
         e.draggable=!editMode.checked;   // 編輯模式下不拖曳，否則點字會變成拖列
         // 拖曳是「重排」，跨頁時次頁會遞補一列回來；要真的把列推到下頁得用頁間按鈕
         e.title='拖曳＝與目標列交換位置（跨頁時次頁會遞補一列回來）\n要把最後一列推到下頁，請用頁與頁之間的「↓ 最後一列推到下頁」';
       e.dataset.i=start+i;
-        e.innerHTML=u.map((r,j)=>segs(r,0,true,0,j*lh+lh*.8,`u,${start+i},${j}`,k,lh/LH)).join('');
+        e.innerHTML=u.map((r,j)=>segs(r,0,true,0,j*lh+lh*.8,`u,${start+i},${j}`,k)).join('');
         h.appendChild(e);
       });
       li+=u.length;
@@ -704,14 +710,14 @@ function insertNL(){
   r.setStartAfter(n); r.collapse(true); s.removeAllRanges(); s.addRange(r);
 }
 // half = 只輸出落在第幾個半頁的片段，x 也換算成該半頁的座標
-// kz = 列高壓縮比，用來等比縮放同列內部的基線落差（中文比數字低幾 pt 那種）
-// （別叫 k：下面 map 的索引也叫 k，會把壓縮比蓋掉，基線落差變成「乘上第幾段」）
-function segs(r, top, rel, pgno, dy=0, path='', half=0, kz=1){
+// 同列內部的基線落差（中文比數字低幾 pt 那種）一律照原檔，不隨列高縮放：
+// 那是字型本身的落差，跟著列高放大就變成「數字整個偏移」。
+function segs(r, top, rel, pgno, dy=0, path='', half=0){
   // 地線以下（頁尾）孤立的純數字視為頁碼，換成新頁次（對開時左右各自算）
   const pn=s=>pgno&&r.y>bottomY&&r.length<=2&&/^\d+$/.test(s.t);
   const txt=s=>pn(s) ? String(pgno+Math.floor(s.x/pageW)) : s.t;
   return r.map((s,k)=>[s,k]).filter(([s])=>Math.floor(s.x/pageW)===half)
-    .map(([s,k])=>`<span class=seg ${s.hid?`data-lt="${s.hid}"`:''} ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy+(s.y-r.y)*kz:s.y+dy)-baseOff(s.sz,s.b,s.s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
+    .map(([s,k])=>`<span class=seg ${s.hid?`data-lt="${s.hid}"`:''} ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy+(s.y-r.y):s.y+dy)-baseOff(s.sz,s.b,s.s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
 }
 
 // ── 畫面縮放：只縮預覽，列印一律 100%（見 @media print）──
