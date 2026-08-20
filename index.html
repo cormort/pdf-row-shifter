@@ -622,16 +622,17 @@ function render(){
     const botLimit = noteTop>bodyBot ? bodyBot : Math.min(bodyBot, noteTop-LH);
     // 勾「平均列高」＝這頁的列平均分佈到表身底端；
     // 沒勾時維持原行為：非最後一頁對齊「最滿那頁」的底端 fillY，最後一頁保留原行高。
-    const avg = avgPg.has(pi), sp=Math.max(1,n-1);
-    const lh = Math.max(minLH, avg ? (botLimit-bodyTop)/sp
-                             : !last ? (fillY-bodyTop)/sp
-                                     : Math.min(LH,(botLimit-bodyTop)/sp));
+    // 「文字置中」＝把這頁切成 n 個等高的列帶（上界到底端），文字擺在自己那帶的正中；
+    // 沒勾就維持原本的 n-1 個間距、文字貼在自己的基線上。
+    const mid = vmid.checked, top0 = bodyTop-LH*.8;
+    const avg = avgPg.has(pi), sp = mid ? n : Math.max(1,n-1);
+    const div = bot => (bot-(mid?top0:bodyTop))/sp;
+    const lh = Math.max(minLH, avg ? div(botLimit)
+                             : !last ? div(fillY)
+                                     : Math.min(LH,div(botLimit)));
     // 「合計貼地線」：最後一頁列不滿時，尾端那幾列合計／總計整塊沉到地線上方，
     // 中間留白；其餘列位置與行距都不動（跟「平均列高」把整頁拉開不同）
-    // 列高被拉開時文字仍貼在自己的基線上，看起來就靠在該列下緣；
-    // 把整列往上抬半個「多出來的行距」，文字才落在上下兩列中間。抬升最多半個原行高，
-    // 免得列高拉得很開時第一列衝出表身上界。
-    const cy = vmid.checked ? Math.min((lh-LH)/2, LH*.5) : 0;
+    const cy = mid ? -(lh-LH)/2 : 0;
     const pg=units.slice(start,end);
     const isTot=u=>/^[\s　]*[合總][\s　]*計/.test(u[0].map(s=>s.t).join(''));
     let tot=0; if(last && sink.checked) while(tot<pg.length && isTot(pg[pg.length-1-tot])) tot++;
