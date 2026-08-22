@@ -209,7 +209,7 @@ bu.title=`復原 (${KMOD}Z)`; br.title=`重做 (${MAC?'⇧⌘Z':'Ctrl+Shift+Z'})
 let minLH=0;
 const avgPg=new Set();        // 要平均列高的頁（非最後一頁本來就是平均的）
 const locks=new Set();        // 鎖住的分頁點，以「第幾個 unit 之後斷頁」記，不受其他頁增減影響
-let W=595,pageW=595,H=842, frame=[], head=[], note=[], rows=[], units=[], breaks=[], PADT=2, PADB=2, NOTEY=0, topY=0, bodyTop=0, bodyBot=800, bottomY=800, lastBot=800, fillY=800, LH=7, perPage=1;
+let W=595,pageW=595,H=842, frame=[], head=[], note=[], rows=[], units=[], breaks=[], PADT=2, PADB=2, NOTEY=0, topY=0, bodyTop=0, bodyBot=800, bottomY=800, pgBots=[], fillY=800, LH=7, perPage=1;
 const sel=new Set();
 
 let buf=null;
@@ -290,7 +290,7 @@ async function load(){
   // 分列／分註只認「比首頁高」的地線：量不到全寬線的頁（spanning 退回整頁）沿用首頁值。
   // 版面基準（平均列高、註起始）仍一律用首頁的 bottomY；末頁的框線另外在 render() 收上去。
   const bots = pgBot.map(b=>Math.min(b, bottomY));
-  lastBot = bots[bots.length-1];
+  pgBots = bots;
   head = all.map((pg,i)=>pg.filter(r=>r.y<=sep || (r.y>bots[i] && isPgNo(r))));
   // 註常常騎在地線上（前一兩列在線上、其餘在線下），只看地線會把它切成兩半。
   // 實測 13 個公文檔：「註／附註／說明」開頭的列一定是該頁最後一段，之後同頁沒有
@@ -601,12 +601,19 @@ function render(){
     // 少一列就稍微放寬、多一列就稍微壓縮，不會在頁尾留下一塊突兀的空白。
     const n=nlines(start,end);
     const last=pi===breaks.length-1;
-    // 末頁地線往上收：原檔末頁常把地線提上來，空出下面放表尾註（固資成本效益 84pt、OF-08-基金 64pt），
+    // 表尾註跟著表格結尾走：末頁畫原檔末頁那份，整塊平移到「地線 + 註起始」，內部行距不變；
+    // 其餘各頁的註（對開表用單頁模式開時才會有）畫在自己那頁的原位（畫在下面，這裡先算位置）
+    const ni = last ? note.length-1 : pi, nt = note[ni] || [];
+    const ndy = last && nt.length ? bottomY+NOTEY-Math.min(...nt.map(r=>r.y)) : 0;
+    const noteTop = nt.length ? Math.min(...nt.map(r=>r.y))+ndy : Infinity;
+    // 地線往上收：原檔列不滿的頁常把地線提上來，空出下面放註（固資成本效益 84pt、OF-08-基金 64pt），
     // 每頁都畫首頁那條的話，註就被框在表格裡面。三個條件才收，而且是全有全無——收一半會讓地線
     // 從註中間穿過去：收線量要大過半個行高（濾掉兩道 1pt 疊出來的線合併後 ±1 的飄移，例：長債）、
-    // 本頁列排完要空得出這麼多（推列到末頁就自動退回原位）、註要整段落在新地線下方。
-    const raise = bottomY-lastBot, room = bodyBot-(bodyTop+(n-1)*LH);
-    const shrink = last && raise>LH/2 && room>=raise && NOTEY>=-raise ? raise : 0;
+    // 註要整段落在新地線下方、這頁的列壓到最小列高仍排得進去（推太多列進來就自動退回原位）。
+    const raise = bottomY-(pgBots[last ? pgBots.length-1 : pi] ?? bottomY);
+    const lo = bodyBot-raise;                                    // 收線後這頁的排版下限
+    const lh0 = Math.max(minLH, Math.min(LH, (lo-bodyTop)/Math.max(1,n-1)));
+    const shrink = raise>LH/2 && noteTop>=bottomY-raise && bodyTop+(n-1)*lh0<=lo+.5 ? raise : 0;
     const fr = shrink ? frame.map(l=> l.w ? (l.y>=bottomY-1 ? {...l, y:l.y-shrink} : {...l})
                                           : (l.y+l.h>=bottomY-1 ? {...l, h:Math.max(1,l.h-shrink)} : {...l}))
                       : frame;
@@ -626,16 +633,10 @@ function render(){
     const hi = head[pi] ? pi : Math.min(1,head.length-1);
     head[hi].forEach((r,ri)=>halves.forEach((h,k)=>
       h.insertAdjacentHTML('beforeend', segs(r, r.y, false, pi*N+1, 0, `h,${hi},${ri}`, k))));
-    // 表尾註跟著表格結尾走：末頁畫原檔末頁那份，整塊平移到「地線 + 註起始」，內部行距不變；
-    // 其餘各頁的註（對開表用單頁模式開時才會有）畫在自己那頁的原位
-    const ni = last ? note.length-1 : pi, nt = note[ni] || [];
-    const ndy = last && nt.length ? bottomY+NOTEY-Math.min(...nt.map(r=>r.y)) : 0;
     nt.forEach((r,ri)=>halves.forEach((h,k)=>
       h.insertAdjacentHTML('beforeend', segs(r, 0, false, 0, ndy, `n,${ni},${ri}`, k))));
     // 這頁的列能排到哪裡：地線，但註若騎在地線上（註起始為負）就再退一個原行高，
-    // 否則最後一列會壓在註上面（平均列高把列拉到底時最明顯）
-    const noteTop = nt.length ? Math.min(...nt.map(r=>r.y))+ndy : Infinity;
-    // 註在地線下方就不必退讓，排到地線為止
+    // 否則最後一列會壓在註上面（平均列高把列拉到底時最明顯）；註在地線下方就不必退讓
     const botLimit = noteTop>bBot ? bBot : Math.min(bBot, noteTop-LH);
     // 勾「平均列高」＝這頁的列平均分佈到表身底端；
     // 沒勾時維持原行為：非最後一頁對齊「最滿那頁」的底端 fillY，最後一頁保留原行高。
