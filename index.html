@@ -298,16 +298,14 @@ async function load(){
   const noteFrom = pg => Math.min(...pg.filter(r=>r.y>H*.6 && /^\s*(註|附註|說明)/.test(r[0].t))
                                     .map(r=>r.y), Infinity);
   const isNote = (r,nf,bot) => !isPgNo(r) && (r.y>bot || r.y>=nf);
-  // 註通常每頁都有一份，依內容去重，最後一頁只畫一次
-  note=[]; const seen=new Set();
-  all.forEach((pg,i)=>{ const nf=noteFrom(pg);
-    pg.filter(r=>r.y>sep && isNote(r,nf,bots[i])).forEach(r=>{
-      const k=r.map(s=>s.t).join(''); if(!seen.has(k)){ seen.add(k); note.push(r); }
-    });
-  });
-  // 註起始預設沿用原檔（註的第一列距地線多遠；騎在線上時是負的）
-  NOTEY = note.length ? +(Math.min(...note.map(r=>r.y))-bottomY).toFixed(1) : 0;
-  noteY.value = NOTEY; noteY.parentElement.style.display = note.length?'':'none';
+  // 註留在它原本那一頁。對開表用單頁模式開時，左右半頁的註是同幾句話的左右兩半、內容不同，
+  // 全部收成一份畫在末頁就會疊成一團（用人費用、固資來源、固資成本效益、OF-08-基金 都會）。
+  // 原檔末頁那份才是表尾註，跟著表格結尾走；其餘各頁的原位不動，該頁的列也不會排到它上面。
+  note = all.map((pg,i)=>pg.filter(r=>r.y>sep && isNote(r,noteFrom(pg),bots[i])));
+  const tail = note[note.length-1] || [];
+  // 註起始預設沿用原檔（表尾註的第一列距地線多遠；騎在線上時是負的）
+  NOTEY = tail.length ? +(Math.min(...tail.map(r=>r.y))-bottomY).toFixed(1) : 0;
+  noteY.value = NOTEY; noteY.parentElement.style.display = tail.length?'':'none';
 
   rows=[]; units=[]; breaks=[]; sel.clear(); undoS=[]; redoS=[]; selSeg.clear();
   avgPg.clear(); locks.clear(); minLH=0; dragI=lastI=null;
@@ -319,8 +317,9 @@ async function load(){
   });
   // 多表文件（封面＋目次＋多張表）也是文字型、也有全寬橫線，錯誤訊息若只講那兩點會把人帶錯方向。
   // 這種檔的特徵是 sep 切太前面、幾乎整份被判成表尾註（OECD 300 頁實測 note=8757、表身 0 列）。
-  if(!rows.length){ fail(note.length>50
-    ? `找不到表身資料列（地線以下被判成註的有 ${note.length} 列）。這份看起來不是單一連續表格，請先切出單一張表再試。`
+  const nNote = note.reduce((a,p)=>a+p.length,0);
+  if(!rows.length){ fail(nNote>50
+    ? `找不到表身資料列（地線以下被判成註的有 ${nNote} 列）。這份看起來不是單一連續表格，請先切出單一張表再試。`
     : '表身範圍內找不到可調整的資料列（需為文字型 PDF，且表格有橫貫全寬的天地線）'); return; }
 
   // 表身格線：起始 y 與行高取自原檔
@@ -493,7 +492,7 @@ function spanning(fr){
 
 // ── 復原 / 重做：每次動作前存一份 units+breaks 快照（列本身唯讀，淺拷貝就夠） ──
 let undoS=[], redoS=[];
-const snap=()=>({u:units.map(u=>[...u]), b:breaks.slice(), h:head.map(p=>[...p]), n:[...note], l:[...locks]});
+const snap=()=>({u:units.map(u=>[...u]), b:breaks.slice(), h:head.map(p=>[...p]), n:note.map(p=>[...p]), l:[...locks]});
 const push=()=>{ undoS.push(snap()); redoS=[]; if(undoS.length>100) undoS.shift(); };
 // locks 以 unit 索引記，跟著 breaks 一起還原，不然復原後鎖會指到不存在的分頁點
 function restore(s){ units=s.u; breaks=s.b; head=s.h; note=s.n;
@@ -627,13 +626,15 @@ function render(){
     const hi = head[pi] ? pi : Math.min(1,head.length-1);
     head[hi].forEach((r,ri)=>halves.forEach((h,k)=>
       h.insertAdjacentHTML('beforeend', segs(r, r.y, false, pi*N+1, 0, `h,${hi},${ri}`, k))));
-    // 表尾註跟著表格結尾走：只畫在最後一頁，整塊平移到「地線 + 註起始」，內部行距不變
-    const ndy = note.length ? bottomY+NOTEY-Math.min(...note.map(r=>r.y)) : 0;
-    if(last) note.forEach((r,ri)=>halves.forEach((h,k)=>
-      h.insertAdjacentHTML('beforeend', segs(r, 0, false, 0, ndy, `n,0,${ri}`, k))));
-    // 末頁列能排到哪裡：地線，但註若騎在地線上（註起始為負）就再退一個原行高，
+    // 表尾註跟著表格結尾走：末頁畫原檔末頁那份，整塊平移到「地線 + 註起始」，內部行距不變；
+    // 其餘各頁的註（對開表用單頁模式開時才會有）畫在自己那頁的原位
+    const ni = last ? note.length-1 : pi, nt = note[ni] || [];
+    const ndy = last && nt.length ? bottomY+NOTEY-Math.min(...nt.map(r=>r.y)) : 0;
+    nt.forEach((r,ri)=>halves.forEach((h,k)=>
+      h.insertAdjacentHTML('beforeend', segs(r, 0, false, 0, ndy, `n,${ni},${ri}`, k))));
+    // 這頁的列能排到哪裡：地線，但註若騎在地線上（註起始為負）就再退一個原行高，
     // 否則最後一列會壓在註上面（平均列高把列拉到底時最明顯）
-    const noteTop = last&&note.length ? Math.min(...note.map(r=>r.y))+ndy : Infinity;
+    const noteTop = nt.length ? Math.min(...nt.map(r=>r.y))+ndy : Infinity;
     // 註在地線下方就不必退讓，排到地線為止
     const botLimit = noteTop>bBot ? bBot : Math.min(bBot, noteTop-LH);
     // 勾「平均列高」＝這頁的列平均分佈到表身底端；
@@ -644,7 +645,7 @@ function render(){
     const avg = avgPg.has(pi), sp = mid ? n : Math.max(1,n-1);
     const div = bot => (bot-(mid?top0:bodyTop))/sp;
     const lh = Math.max(minLH, avg ? div(botLimit)
-                             : !last ? div(fillY)
+                             : !last ? div(Math.min(fillY,botLimit))
                                      : Math.min(LH,div(botLimit)));
     // 「合計貼地線」：最後一頁列不滿時，尾端那幾列合計／總計整塊沉到地線上方，
     // 中間留白；其餘列位置與行距都不動（跟「平均列高」把整頁拉開不同）
@@ -910,8 +911,8 @@ function alignX(mode, box, setx, cols){
     setx(b, (lo+hi)/2-b.w/2);
   });
 }
-// data-p = 「u|h|n, 群組/頁索引, 列, 段」；n（表尾註）沒有分頁維度，a 恆為 0
-const owner=(k,a)=> k==='u' ? units[a] : k==='n' ? note : head[a];
+// data-p = 「u|h|n, 群組/頁索引, 列, 段」；n 的頁索引是原檔的頁，不是輸出的頁
+const owner=(k,a)=> k==='u' ? units[a] : k==='n' ? note[a] : head[a];
 const seg0=p=>{ const [k,a,b,c]=p.split(','); return owner(k,a)[b][c]; };
 function setX(p,x){
   const [k,a,b,c]=p.split(',');
