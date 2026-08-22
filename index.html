@@ -288,12 +288,19 @@ async function load(){
   // 不逐頁各畫自己那份——原檔地線常有幾 pt 的抖動（固資成本效益 783～788），會在頁間跳。
   const canon = new Map();
   frames = frs.map(f => {
-    // 有半邊完全沒線的（對開表頁數是奇數時，末版只有左半）沿用首版，不然那半張紙會整片空白
-    if(new Set(f.map(l=>Math.floor(l.x/pageW))).size < N) return frs[0];
-    // 指紋只取貫穿表身的長直線去重後的 x：短的格內分隔線每頁條數不一樣（固資成本效益），
-    // 拿來當指紋會變成每頁一份，原檔地線那幾 pt 的抖動就會在頁間跳。
-    const k = [...new Set(f.filter(l=>l.h>50).map(l=>Math.round(l.x)))].sort((a,b)=>a-b).join();
-    if(!canon.has(k)) canon.set(k,f); return canon.get(k);
+    // 有半邊完全沒線的（對開表頁數是奇數時，末版只有左半）沿用首版框線——
+    // 但只取原頁有線的那半，空的那半張紙保持空白：拿首版另一半的線去補，
+    // 會畫出一張只有線、沒有字的幽靈表格頁（列印多一張空白格線頁）
+    const has = new Set(f.map(l=>Math.floor(l.x/pageW)));
+    let base;
+    if(has.size < N) base = frs[0];
+    else {
+      // 指紋只取貫穿表身的長直線去重後的 x：短的格內分隔線每頁條數不一樣（固資成本效益），
+      // 拿來當指紋會變成每頁一份，原檔地線那幾 pt 的抖動就會在頁間跳。
+      const k = [...new Set(f.filter(l=>l.h>50).map(l=>Math.round(l.x)))].sort((a,b)=>a-b).join();
+      if(!canon.has(k)) canon.set(k,f); base = canon.get(k);
+    }
+    return base.filter(l=>has.has(Math.floor(l.x/pageW)));
   });
   new Set(frames).forEach(capEnds);          // 線的幾何載入後就不再變，算一次就好
   // 固定頁首 = 表頭橫線以上的內容（首頁一份、續頁一份，原樣不動）
@@ -312,13 +319,23 @@ async function load(){
   // 註常常騎在地線上（前一兩列在線上、其餘在線下），只看地線會把它切成兩半。
   // 實測 13 個公文檔：「註／附註／說明」開頭的列一定是該頁最後一段，之後同頁沒有
   // 資料列，所以從該列起算到頁尾都是註。限在頁面下段，避免表中真有「註」開頭的資料列。
-  const noteFrom = pg => Math.min(...pg.filter(r=>r.y>H*.6 && /^\s*(註|附註|說明)/.test(r[0].t))
-                                    .map(r=>r.y), Infinity);
-  const isNote = (r,nf,bot) => !isPgNo(r) && (r.y>bot || r.y>=nf);
+  // 對開表用單頁模式開時，右半頁的註是左半註的續行（不以「註」開頭）——沿用前一頁的
+  // 註起始並放寬 8pt（左右半的註高度略有出入），且要含中文字（右半的合計列是數字、
+  // 註是文字），避免把合計列收進註。
+  const nfOwn = all.map(pg=>Math.min(...pg.filter(r=>r.y>H*.6 && /^\s*(註|附註|說明)/.test(r[0].t))
+                                          .map(r=>r.y), Infinity));
+  const nfEff = [];
+  for(let i=0;i<all.length;i++)
+    nfEff[i] = nfOwn[i]<Infinity ? {v:nfOwn[i], carr:false}
+      : (i>0 && nfOwn[i-1]<Infinity) ? {v:nfOwn[i-1]-8, carr:true}
+      : (i>0 && nfEff[i-1] && nfEff[i-1].v<Infinity) ? {v:nfEff[i-1].v, carr:true}
+      : {v:Infinity, carr:false};
+  const isNote = (r,nf,bot) => !isPgNo(r) && (r.y>bot
+      || (r.y>=nf.v && (!nf.carr || /[\u4e00-\u9fff]/.test(r.map(s=>s.t).join('')))));
   // 註留在它原本那一頁。對開表用單頁模式開時，左右半頁的註是同幾句話的左右兩半、內容不同，
   // 全部收成一份畫在末頁就會疊成一團（用人費用、固資來源、固資成本效益、OF-08-基金 都會）。
   // 原檔末頁那份才是表尾註，跟著表格結尾走；其餘各頁的原位不動，該頁的列也不會排到它上面。
-  note = all.map((pg,i)=>pg.filter(r=>r.y>sep && isNote(r,noteFrom(pg),bots[i])));
+  note = all.map((pg,i)=>pg.filter(r=>r.y>sep && isNote(r,nfEff[i],bots[i])));
   const tail = note[note.length-1] || [];
   // 註起始預設沿用原檔（表尾註的第一列距地線多遠；騎在線上時是負的）
   NOTEY = tail.length ? +(Math.min(...tail.map(r=>r.y))-bottomY).toFixed(1) : 0;
@@ -327,7 +344,7 @@ async function load(){
   rows=[]; units=[]; breaks=[]; sel.clear(); undoS=[]; redoS=[]; selSeg.clear();
   avgPg.clear(); locks.clear(); minLH=0; dragI=lastI=null;
   all.forEach((pg,i)=>{
-    const nf=noteFrom(pg);
+    const nf=nfEff[i];
     const body=pg.filter(r=>r.y>sep && r.y<=bots[i] && !isNote(r,nf,bots[i]));
     rows.push(...body); units.push(...body.map(r=>[r]));
     breaks.push(units.length);
@@ -784,8 +801,9 @@ function reflow(blk){
   const ys=blk.map(r=>r.y), sz=rowSz(blk[0])||11;
   const gaps=ys.slice(1).map((y,i)=>y-ys[i]).filter(g=>g>1).sort((a,b)=>a-b);
   const lh=gaps.length?gaps[gaps.length>>1]:sz*1.35;
-  // 條號在原檔各自是一個片段，用它切條，也用它抓「條號欄」與「內文欄」兩個縮排
-  const isNum=t=>/^\d+[.、]$/.test(t.trim());
+  // 條號：原檔獨立片段（「1.」）或黏著內文的（「2.兼任人員…」）都算，用它切條，
+  // 也用它抓「條號欄」與「內文欄」兩個縮排。「1.5倍」的點後是數字，不當條號。
+  const isNum=t=>/^\d+[.、](\s|[\u4e00-\u9fff]|$)/.test(t.trim());
   const flat=blk.flatMap(r=>r.map(s=>({...s})));
   const xPre=flat[0].x; let xMark=xPre, xText=xPre;
   for(let i=0;i<flat.length;i++) if(isNum(flat[i].t)){
@@ -798,7 +816,14 @@ function reflow(blk){
       ...flat.filter(s=>Math.floor(s.x/pageW)===k).map(s=>s.x+(s.w||0)));
   const hi=k=>rEdge[k];
   const items=[]; const pre=[]; let cur=null;
-  flat.forEach(s=>{ if(isNum(s.t)) items.push(cur={mark:s, runs:[]}); else (cur?cur.runs:pre).push(s); });
+  flat.forEach(s=>{
+    if(isNum(s.t)){
+      // 條號黏著內文（「2.兼任人員…」）時拆成「2.」＋內文兩段，內文接在條號後面
+      const m=/^(\d+[.、])([\s\S]*)$/.exec(s.t.trim());
+      items.push(cur={mark:{...s, t:m[1], w:0}, runs:[]});
+      if(m[2]) cur.runs.push({...s, t:m[2], w:0});
+    } else (cur?cur.runs:pre).push(s);
+  });
   if(!items.length) items.push({mark:null, runs:pre.splice(0)});
 
   const out=[]; let k=0, y=ys[0], x=xPre, line=[], buf='', bufX=x, st=null;
@@ -820,9 +845,13 @@ function reflow(blk){
       buf+=tk; x+=w;
     }
   };
+  // 「註：」開頭的前綴跟第一條同排；整段前文（條號黏在「註：1.…」裡時）先換行再排條號
+  const preW=pre.reduce((a,s)=>a+textW(s.t,s),0);
   pre.forEach(s=>add(s.t,s));
   items.forEach((it,i)=>{
-    if(i) nextLine(xMark); else if(it.mark) goto_(xMark);
+    if(i) nextLine(xMark);
+    else if(it.mark && preW>(xMark-xPre)+1) nextLine(xMark);
+    else if(it.mark) goto_(xMark);
     if(it.mark){ add(it.mark.t, it.mark); goto_(xText); }
     it.runs.forEach(s=>add(s.t,s));
   });
