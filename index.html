@@ -111,7 +111,7 @@
 
 <div id="ctl">
   <span class="g">
-    <input type="file" id="f" accept="application/pdf">
+    <input type="file" id="f" accept="application/pdf,.json">
     <label class="tbl"><input type="checkbox" id="spread"> 對開表</label>
     <label id="freeLbl" title="不分列不分頁，整份原樣攤開，只搬移／編輯文字方塊與線條"><input type="checkbox" id="freeMode"> 自由編輯</label>
   </span>
@@ -157,6 +157,7 @@
     <button id="delObj" title="刪除選取物件（Delete）">刪除</button>
     <button onclick="fundoF()" id="fbu" title="復原">↩</button>
     <button onclick="fredoF()" id="fbr" title="重做">↪</button>
+    <button onclick="saveFree()" title="把目前的自由編輯結果存成 .json，之後拖回來就能接著改（不需要原始 PDF）">存檔</button>
     <span class="lbl">拖曳搬移・線兩端可拉長度・雙擊改字・方向鍵微調（Shift 大步）</span>
   </span>
   <span class="g">
@@ -191,7 +192,7 @@
     <p>天地線、欄線、頁首、字型與框線粗細全部從原檔讀出來<br>只調整資料列落在哪一頁，版面不動</p>
   </div>
   <div id="err"></div>
-  <small>只吃文字型 PDF，掃描檔沒有文字圖層。表格需有橫貫全寬的天地線。<br>
+  <small>只吃文字型 PDF，掃描檔沒有文字圖層。表格需有橫貫全寬的天地線。自由編輯的 .json 存檔也可以拖進來。<br>
   檔案不會上傳，全部在你這台電腦的瀏覽器裡處理。</small>
 </div>
 
@@ -225,7 +226,8 @@ f.onchange = e => { take(e.target.files[0]); };
 // ── 起始畫面的拖曳區：載入成功才收起，失敗留在原地顯示原因 ──
 const take = file => {
   if(!file) return;
-  if(!/\.pdf$/i.test(file.name)){ err.classList.add('bad'); return err.textContent=`「${file.name}」不是 PDF`; }
+  if(/\.json$/i.test(file.name)) return loadSaved(file);          // 自由編輯的存檔
+  if(!/\.pdf$/i.test(file.name)){ err.classList.add('bad'); return err.textContent=`「${file.name}」不是 PDF 或自由編輯存檔（.json）`; }
   // 大檔要跑好幾秒（260 頁實測 6.4s），沒回饋會像當掉。成功時 drop 收起、失敗時 fail() 覆寫
   err.classList.remove('bad'); err.textContent=`讀取中…（${file.name}）`; buf=file; queueLoad();
 };
@@ -635,8 +637,10 @@ function render(){
                       : base;
     if(shrink) capEnds(fr);
     const bBot = bodyBot-shrink;
+    halves.forEach(h=>h.__ln=[]);
     fr.forEach(l=>{
       const k=Math.min(N-1,Math.floor(l.x/pageW));
+      halves[k].__ln.push({...l, x:l.x-k*pageW});     // 頁內座標，進自由編輯時直接接手
       halves[k].insertAdjacentHTML('beforeend',
         // l.x / l.y 是線的中心，畫成方塊要退半個線寬；粗細方向再吸附到整數像素，
         // 否則落在半個像素上的線會被反鋸齒糊成兩三個像素，看起來比別條粗。
@@ -1198,10 +1202,58 @@ const catOf = id => id[0];
 freeMode.onchange = () => {
   if(fundoS.length && !freeMode.checked && !confirm('離開自由編輯會重新載入原檔，目前的搬移／改字都會清掉。要繼續嗎？'))
     return freeMode.checked=true;
+  // 從 .json 存檔還原的沒有原始 PDF，退不回一般模式
+  if(!freeMode.checked && fpages.length && !buf){
+    freeMode.checked=true; return alert('這是從 .json 存檔還原的，沒有原始 PDF 可以退回一般模式。'); }
   document.body.classList.toggle('free', freeMode.checked);
   fsels.clear(); fundoS=[]; fredoS=[];
+  // 進自由編輯時接手畫面上調好的版面（分頁、列高、備註都已經算進去），不重讀原檔把它作廢
+  if(freeMode.checked && units.length) return freeFromLayout();
   buf && queueLoad();
 };
+
+// 直接讀畫好的 DOM：位置都是 pt，所見即所得，不必把 render() 的數學（列高、平移、置中）再算一次。
+// 對開時一個半頁就是一張紙，攤平後剛好是列印出來的樣子。
+function freeFromLayout(){
+  fpages = [...out.querySelectorAll('.page')].map(pg=>({
+    w:pageW, h:H, l:pg.__ln||[],
+    t:[...pg.querySelectorAll('.seg')].map(e=>{
+      const st=e.style, sz=parseFloat(st.fontSize);
+      const b=st.fontWeight==='700'?1:0, s=/serif/.test(st.fontFamily)?1:0;
+      // 表身的字包在 .row 裡、top 是相對列的，要加上列本身的位置；頁首與註直接掛在頁上
+      const par=e.parentElement, dy=par.classList.contains('row')?parseFloat(par.style.top):0;
+      const o={ x:parseFloat(st.left), y:parseFloat(st.top)+dy+baseOff(sz,b,s),  // 存回基線（ftop 會再減一次）
+                t:e.textContent, sz, b, s, w:+e.dataset.w||0 };
+      if(e.dataset.lt) o.hid=+e.dataset.lt;
+      return o;
+    })
+  }));
+  W=pageW;
+  pagesize.textContent=`@page{size:${pageW}pt ${H}pt;margin:0}`;
+  renderFree();
+}
+
+// ── 自由編輯存檔：fpages 本身就是完整快照（文字、線條、字型全在裡面），還原不必帶原始 PDF ──
+let freeName='';
+function saveFree(){
+  if(!fpages.length) return;
+  const name=(buf?.name||freeName||'free').replace(/\.(pdf|json)$/i,'');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify({v:1, pageW, H, name, fpages})],{type:'application/json'}));
+  a.download=name+'.json';
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+}
+async function loadSaved(file){
+  let d; try{ d=JSON.parse(await file.text()); }catch(e){ return fail('這個 .json 讀不出來：'+e.message); }
+  if(!d || !Array.isArray(d.fpages) || !d.fpages.length) return fail(`「${file.name}」不是自由編輯的存檔`);
+  fpages=d.fpages; pageW=W=d.pageW||fpages[0].w; H=d.H||fpages[0].h;
+  buf=null; freeName=d.name||file.name;
+  freeMode.checked=true; document.body.classList.add('free');
+  fsels.clear(); fundoS=[]; fredoS=[];
+  pagesize.textContent=`@page{size:${pageW}pt ${H}pt;margin:0}`;
+  err.classList.remove('bad'); err.textContent=''; drop.classList.add('hide');
+  renderFree();
+}
 document.getElementsByName('cat').forEach(r=>r.onchange=()=>setCat(r.value));
 // 切換選取對象時把另一類的選取清掉：兩類本來就不該混在同一次搬移裡
 const setCat = v => { document.body.classList.toggle('cat-t', v==='t');
