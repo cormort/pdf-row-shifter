@@ -209,7 +209,7 @@ bu.title=`復原 (${KMOD}Z)`; br.title=`重做 (${MAC?'⇧⌘Z':'Ctrl+Shift+Z'})
 let minLH=0;
 const avgPg=new Set();        // 要平均列高的頁（非最後一頁本來就是平均的）
 const locks=new Set();        // 鎖住的分頁點，以「第幾個 unit 之後斷頁」記，不受其他頁增減影響
-let W=595,pageW=595,H=842, frame=[], head=[], note=[], rows=[], units=[], breaks=[], PADT=2, PADB=2, NOTEY=0, topY=0, bodyTop=0, bodyBot=800, bottomY=800, pgBots=[], fillY=800, LH=7, perPage=1;
+let W=595,pageW=595,H=842, frame=[], frames=[], head=[], note=[], rows=[], units=[], breaks=[], PADT=2, PADB=2, NOTEY=0, topY=0, bodyTop=0, bodyBot=800, bottomY=800, pgBots=[], fillY=800, LH=7, perPage=1;
 const sel=new Set();
 
 let buf=null;
@@ -262,7 +262,7 @@ async function load(){
   if(freeMode.checked) return loadFree(doc);
   // 對開：奇數頁是左半、偶數頁是右半，兩頁併成一個「版」（右半的 x 平移一個頁寬）
   const N = spread.checked ? 2 : 1;
-  const all=[], pgBot=[];
+  const all=[], pgBot=[], frs=[];
   for(let p=1;p<=doc.numPages;p+=N){
     let txt=[], fr=[];
     for(let k=0;k<N && p+k<=doc.numPages;k++){
@@ -277,8 +277,21 @@ async function load(){
     W = pageW*N;
     if(p===1) frame=fr;
     // 每頁的地線各自量：末頁常把地線往上收，好在下面空出表尾註的位置
-    all.push(merge(txt)); pgBot.push(spanning(fr).pop());
+    all.push(merge(txt)); pgBot.push(spanning(fr).pop()); frs.push(fr);
   }
+  // 欄線 x 相同的頁共用同一份框線。一般連續表整份只有一種；對開表用單頁模式開會有兩種
+  // （左半欄線 254/368/473/577、右半 135/240/345/450），共用首頁那份就字線對不上。
+  // 不逐頁各畫自己那份——原檔地線常有幾 pt 的抖動（固資成本效益 783～788），會在頁間跳。
+  const canon = new Map();
+  frames = frs.map(f => {
+    // 有半邊完全沒線的（對開表頁數是奇數時，末版只有左半）沿用首版，不然那半張紙會整片空白
+    if(new Set(f.map(l=>Math.floor(l.x/pageW))).size < N) return frs[0];
+    // 指紋只取貫穿表身的長直線去重後的 x：短的格內分隔線每頁條數不一樣（固資成本效益），
+    // 拿來當指紋會變成每頁一份，原檔地線那幾 pt 的抖動就會在頁間跳。
+    const k = [...new Set(f.filter(l=>l.h>50).map(l=>Math.round(l.x)))].sort((a,b)=>a-b).join();
+    if(!canon.has(k)) canon.set(k,f); return canon.get(k);
+  });
+  new Set(frames).forEach(capEnds);          // 線的幾何載入後就不再變，算一次就好
   // 固定頁首 = 表頭橫線以上的內容（首頁一份、續頁一份，原樣不動）
   const hy = spanning(frame);
   bottomY = hy[hy.length-1];
@@ -580,7 +593,6 @@ function segPages(pi){
 }
 
 function render(){
-  capEnds(frame);
   // 每頁上限跟著最小列高走，改「最小列高」時要一起更新，否則推拉列的上限會沿用舊值
   perPage = Math.floor((bodyBot-bodyTop)/(minLH||LH))+1;
   out.innerHTML='';
@@ -614,9 +626,11 @@ function render(){
     const lo = bodyBot-raise;                                    // 收線後這頁的排版下限
     const lh0 = Math.max(minLH, Math.min(LH, (lo-bodyTop)/Math.max(1,n-1)));
     const shrink = raise>LH/2 && noteTop>=bottomY-raise && bodyTop+(n-1)*lh0<=lo+.5 ? raise : 0;
-    const fr = shrink ? frame.map(l=> l.w ? (l.y>=bottomY-1 ? {...l, y:l.y-shrink} : {...l})
-                                          : (l.y+l.h>=bottomY-1 ? {...l, h:Math.max(1,l.h-shrink)} : {...l}))
-                      : frame;
+    // 框線照頁首的規則挑：首頁用首頁那份，續頁一律用第 2 頁的（對開表左右半的欄線不同）
+    const base = frames[pi] || frames[Math.min(1,frames.length-1)] || frame;
+    const fr = shrink ? base.map(l=> l.w ? (l.y>=bottomY-1 ? {...l, y:l.y-shrink} : {...l})
+                                         : (l.y+l.h>=bottomY-1 ? {...l, h:Math.max(1,l.h-shrink)} : {...l}))
+                      : base;
     if(shrink) capEnds(fr);
     const bBot = bodyBot-shrink;
     fr.forEach(l=>{
@@ -877,9 +891,11 @@ function align(mode){
   const seen=new Set(), els=[...out.querySelectorAll('.seg.pick')]
     .filter(el=>!seen.has(el.dataset.p) && seen.add(el.dataset.p));
   if(els.length<(mode==='col'?1:2)) return alert(`按住 ${KALT} 點選要對齊的格子，至少兩格`);
-  const box=els.map(el=>({p:el.dataset.p, x:seg0(el.dataset.p).x, w:PT(el)}));
+  const sheets=[...out.querySelectorAll('.sheet')];
+  const box=els.map(el=>({p:el.dataset.p, x:seg0(el.dataset.p).x, w:PT(el),
+                          pi:sheets.indexOf(el.closest('.sheet'))}));
   push();
-  alignX(mode, box, (b,x)=>setX(b.p,x), () => frame.filter(l=>l.h).map(l=>l.x));
+  alignX(mode, box, (b,x)=>setX(b.p,x), b => (frames[b.pi]||frame).filter(l=>l.h).map(l=>l.x));
   selSeg.clear(); render();
 }
 
