@@ -209,7 +209,7 @@ bu.title=`復原 (${KMOD}Z)`; br.title=`重做 (${MAC?'⇧⌘Z':'Ctrl+Shift+Z'})
 let minLH=0;
 const avgPg=new Set();        // 要平均列高的頁（非最後一頁本來就是平均的）
 const locks=new Set();        // 鎖住的分頁點，以「第幾個 unit 之後斷頁」記，不受其他頁增減影響
-let W=595,pageW=595,H=842, frame=[], head=[], note=[], rows=[], units=[], breaks=[], PADT=2, PADB=2, NOTEY=0, topY=0, bodyTop=0, bodyBot=800, bottomY=800, fillY=800, LH=7, perPage=1;
+let W=595,pageW=595,H=842, frame=[], head=[], note=[], rows=[], units=[], breaks=[], PADT=2, PADB=2, NOTEY=0, topY=0, bodyTop=0, bodyBot=800, bottomY=800, lastBot=800, fillY=800, LH=7, perPage=1;
 const sel=new Set();
 
 let buf=null;
@@ -262,7 +262,7 @@ async function load(){
   if(freeMode.checked) return loadFree(doc);
   // 對開：奇數頁是左半、偶數頁是右半，兩頁併成一個「版」（右半的 x 平移一個頁寬）
   const N = spread.checked ? 2 : 1;
-  const all=[];
+  const all=[], pgBot=[];
   for(let p=1;p<=doc.numPages;p+=N){
     let txt=[], fr=[];
     for(let k=0;k<N && p+k<=doc.numPages;k++){
@@ -272,11 +272,12 @@ async function load(){
       const c=await pg.getTextContent();
       await pg.getOperatorList();          // 跑過才會把字型載進 commonObjs，粗體資訊在那裡
       txt.push(...markPale(lines(c, H, fonts(pg,c)), await pale(pg)).map(r=>shift(r,dx)));
-      if(p===1) fr.push(...(await getFrame(pg,H)).map(l=>({...l, x:l.x+dx})));
+      fr.push(...(await getFrame(pg,H)).map(l=>({...l, x:l.x+dx})));
     }
     W = pageW*N;
     if(p===1) frame=fr;
-    all.push(merge(txt));
+    // 每頁的地線各自量：末頁常把地線往上收，好在下面空出表尾註的位置
+    all.push(merge(txt)); pgBot.push(spanning(fr).pop());
   }
   // 固定頁首 = 表頭橫線以上的內容（首頁一份、續頁一份，原樣不動）
   const hy = spanning(frame);
@@ -286,17 +287,21 @@ async function load(){
   const sep = hy[si];
   // 地線以下：純數字（≤2 段）是頁碼，跟著頁首走；其餘是表尾註，只畫在最後一頁
   const isPgNo = r => r.length<=2 && r.every(s=>/^\d+$/.test(s.t));
-  head = all.map(pg=>pg.filter(r=>r.y<=sep || (r.y>bottomY && isPgNo(r))));
+  // 分列／分註只認「比首頁高」的地線：量不到全寬線的頁（spanning 退回整頁）沿用首頁值。
+  // 版面基準（平均列高、註起始）仍一律用首頁的 bottomY；末頁的框線另外在 render() 收上去。
+  const bots = pgBot.map(b=>Math.min(b, bottomY));
+  lastBot = bots[bots.length-1];
+  head = all.map((pg,i)=>pg.filter(r=>r.y<=sep || (r.y>bots[i] && isPgNo(r))));
   // 註常常騎在地線上（前一兩列在線上、其餘在線下），只看地線會把它切成兩半。
   // 實測 13 個公文檔：「註／附註／說明」開頭的列一定是該頁最後一段，之後同頁沒有
   // 資料列，所以從該列起算到頁尾都是註。限在頁面下段，避免表中真有「註」開頭的資料列。
   const noteFrom = pg => Math.min(...pg.filter(r=>r.y>H*.6 && /^\s*(註|附註|說明)/.test(r[0].t))
                                     .map(r=>r.y), Infinity);
-  const isNote = (r,nf) => !isPgNo(r) && (r.y>bottomY || r.y>=nf);
+  const isNote = (r,nf,bot) => !isPgNo(r) && (r.y>bot || r.y>=nf);
   // 註通常每頁都有一份，依內容去重，最後一頁只畫一次
   note=[]; const seen=new Set();
-  all.forEach(pg=>{ const nf=noteFrom(pg);
-    pg.filter(r=>r.y>sep && isNote(r,nf)).forEach(r=>{
+  all.forEach((pg,i)=>{ const nf=noteFrom(pg);
+    pg.filter(r=>r.y>sep && isNote(r,nf,bots[i])).forEach(r=>{
       const k=r.map(s=>s.t).join(''); if(!seen.has(k)){ seen.add(k); note.push(r); }
     });
   });
@@ -306,9 +311,9 @@ async function load(){
 
   rows=[]; units=[]; breaks=[]; sel.clear(); undoS=[]; redoS=[]; selSeg.clear();
   avgPg.clear(); locks.clear(); minLH=0; dragI=lastI=null;
-  all.forEach(pg=>{
+  all.forEach((pg,i)=>{
     const nf=noteFrom(pg);
-    const body=pg.filter(r=>r.y>sep && r.y<=bottomY && !isNote(r,nf));
+    const body=pg.filter(r=>r.y>sep && r.y<=bots[i] && !isNote(r,nf,bots[i]));
     rows.push(...body); units.push(...body.map(r=>[r]));
     breaks.push(units.length);
   });
@@ -593,7 +598,22 @@ function render(){
       pageEl.style.cssText=`width:${pageW}pt;height:${H}pt`;
       sheet.appendChild(pageEl); halves.push(pageEl);
     }
-    frame.forEach(l=>{
+    // 行距微調：除了最後一頁，各頁的列都平均分佈到原檔的表身底端，
+    // 少一列就稍微放寬、多一列就稍微壓縮，不會在頁尾留下一塊突兀的空白。
+    const n=nlines(start,end);
+    const last=pi===breaks.length-1;
+    // 末頁地線往上收：原檔末頁常把地線提上來，空出下面放表尾註（固資成本效益 84pt、OF-08-基金 64pt），
+    // 每頁都畫首頁那條的話，註就被框在表格裡面。三個條件才收，而且是全有全無——收一半會讓地線
+    // 從註中間穿過去：收線量要大過半個行高（濾掉兩道 1pt 疊出來的線合併後 ±1 的飄移，例：長債）、
+    // 本頁列排完要空得出這麼多（推列到末頁就自動退回原位）、註要整段落在新地線下方。
+    const raise = bottomY-lastBot, room = bodyBot-(bodyTop+(n-1)*LH);
+    const shrink = last && raise>LH/2 && room>=raise && NOTEY>=-raise ? raise : 0;
+    const fr = shrink ? frame.map(l=> l.w ? (l.y>=bottomY-1 ? {...l, y:l.y-shrink} : {...l})
+                                          : (l.y+l.h>=bottomY-1 ? {...l, h:Math.max(1,l.h-shrink)} : {...l}))
+                      : frame;
+    if(shrink) capEnds(fr);
+    const bBot = bodyBot-shrink;
+    fr.forEach(l=>{
       const k=Math.min(N-1,Math.floor(l.x/pageW));
       halves[k].insertAdjacentHTML('beforeend',
         // l.x / l.y 是線的中心，畫成方塊要退半個線寬；粗細方向再吸附到整數像素，
@@ -602,15 +622,11 @@ function render(){
     });
     // 輔助線：上界畫在第一列文字的頂端（列框也是從基線退 0.8 行起算），下界畫在最後一列基線
     if(guide.checked) halves.forEach(h=>h.insertAdjacentHTML('beforeend',
-      `<div class=gd style="top:${bodyTop-LH*.8}pt"></div><div class=gd style="top:${bodyBot}pt"></div>`));
+      `<div class=gd style="top:${bodyTop-LH*.8}pt"></div><div class=gd style="top:${bBot}pt"></div>`));
     // 首頁用首頁頁首，續頁一律用第 2 頁的（含「（續）」），只換頁碼
     const hi = head[pi] ? pi : Math.min(1,head.length-1);
     head[hi].forEach((r,ri)=>halves.forEach((h,k)=>
       h.insertAdjacentHTML('beforeend', segs(r, r.y, false, pi*N+1, 0, `h,${hi},${ri}`, k))));
-    // 行距微調：除了最後一頁，各頁的列都平均分佈到原檔的表身底端，
-    // 少一列就稍微放寬、多一列就稍微壓縮，不會在頁尾留下一塊突兀的空白。
-    const n=nlines(start,end);
-    const last=pi===breaks.length-1;
     // 表尾註跟著表格結尾走：只畫在最後一頁，整塊平移到「地線 + 註起始」，內部行距不變
     const ndy = note.length ? bottomY+NOTEY-Math.min(...note.map(r=>r.y)) : 0;
     if(last) note.forEach((r,ri)=>halves.forEach((h,k)=>
@@ -619,7 +635,7 @@ function render(){
     // 否則最後一列會壓在註上面（平均列高把列拉到底時最明顯）
     const noteTop = last&&note.length ? Math.min(...note.map(r=>r.y))+ndy : Infinity;
     // 註在地線下方就不必退讓，排到地線為止
-    const botLimit = noteTop>bodyBot ? bodyBot : Math.min(bodyBot, noteTop-LH);
+    const botLimit = noteTop>bBot ? bBot : Math.min(bBot, noteTop-LH);
     // 勾「平均列高」＝這頁的列平均分佈到表身底端；
     // 沒勾時維持原行為：非最後一頁對齊「最滿那頁」的底端 fillY，最後一頁保留原行高。
     // 「文字置中」＝把這頁切成 n 個等高的列帶（上界到底端），文字擺在自己那帶的正中；
