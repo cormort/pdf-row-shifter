@@ -81,7 +81,7 @@
   .fsel{outline:1px solid #ea4335!important;outline-offset:1px;background:#fce8e6cc}
   @media print{.fsel,body.free .seg,body.free .ln{outline:none!important;background:none}
                 body.free .ln{background:#000}}
-  body.free #ctl .tbl,body:not(.free) #freeG{display:none}
+  body.free #ctl .tbl,body:not(.free) #freeG,body.free #fnAllLbl{display:none}
   .gd{position:absolute;left:0;width:100%;border-top:1px dashed #ea4335;pointer-events:none}
   @media print{.gd{display:none}}
   .brk{display:flex;gap:8px;justify-content:center;align-items:center;color:var(--dim);font-size:12px;
@@ -124,6 +124,7 @@
     <label title="最後一頁列不滿時，尾端的合計／總計列沉到地線上方，中間留白"><input type="checkbox" id="sink"> 合計貼地線</label>
     <label title="列高被拉開時，文字落在上下兩列的中間，而不是貼著自己那條基線"><input type="checkbox" id="vmid" checked> 文字置中</label>
     <label title="畫出表身上下界（只在畫面上，不會印出來）"><input type="checkbox" id="guide" checked> 輔助線</label>
+    <label id="fnAllLbl" title="整份套用同一個字型，Windows／Mac 看到的結果就一致；「（原樣）」＝每個字保留原檔字型">整份字型<select id="fnAll"></select></label>
   </span>
   <span class="g tbl">
     <button id="avgAll" title="所有頁面的列都平均分佈到表身底端">平均列高：全部頁面</button>
@@ -386,15 +387,44 @@ function fonts(pg,c){
   for(const fn of Object.keys(c.styles||{})){
     let nm=''; try{ nm=(pg.commonObjs.get(fn)||{}).name||''; }catch(e){}
     if(nm) srcFonts.add(nm.replace(/^[A-Z]{6}\+/,''));      // 去掉子集前綴 ABCDEF+
-    m[fn]={ b:/bold|black|heavy|semib/i.test(nm), s:/times|serif|roman|georgia|mingliu|song|kai/i.test(nm) };
+    m[fn]={ b:/bold|black|heavy|semib/i.test(nm), s:/times|serif|roman|georgia|mingliu|song|kai/i.test(nm),
+            f:nm.replace(/^[A-Z]{6}\+/,'') };                // 原檔字型名（保留字型用）
   }
   return m;
 }
 
+// 原檔文字層常混入康熙部首／部首補充字元（「⾦」「⼟」「⺠」「⻑」等——PDF 產生器的 ToUnicode 對映錯），
+// 本機字型多半沒有這些字形，會 fallback 到明體，同一句字黑體明體混雜（看起來像字型跑掉）。
+// 載入時對映回正規字：康熙部首（U+2F00–U+2FDF）NFKC 有 1:1 分解；部首補充區（U+2E80–U+2EFF）
+// NFKC 不動，用 RAD_MAP 手動補。
+const RAD_MAP = { '\u2EA0':'民', '\u2ED1':'長' };
+const normCJK = t => {
+  if(!/[\u2E80-\u2FDF]/.test(t)) return t;
+  return t.replace(/[\u2E80-\u2FDF]/g, c => RAD_MAP[c] || c.normalize('NFKC'));
+};
+
+// 原檔字型名（去子集前綴後）→ 本機 CSS 堆疊：保留原檔字型，不要把蘋方當黑體、
+// 明體當黑體（fitWidths 會把寬度不同的字壓扁，看起來就是「字型怪怪的」）。
+// 匹配順序：先特定後一般；認不出來的回 ''，照舊用襯線／黑體二分類。
+const srcStack = sf => {
+  if(!sf) return '';
+  if(/jhenghei|dengxian|msyh|yahei/i.test(sf)) return "'微軟正黑體','Microsoft JhengHei','PingFang TC','Heiti TC',sans-serif";
+  if(/pingfang/i.test(sf)) return "'PingFang TC','PingFang HK','微軟正黑體','Microsoft JhengHei',sans-serif";
+  if(/times|roman/i.test(sf)) return "'Times New Roman',Times,serif";
+  if(/ming|song|sung/i.test(sf)) return "'新細明體','PMingLiU','MingLiU','Songti TC',serif";
+  if(/kai|biao/i.test(sf)) return "'標楷體','DFKai-SB','BiauKai','Kaiti TC',serif";
+  if(/arial|helvetica/i.test(sf)) return "Arial,Helvetica,sans-serif";
+  return '';
+};
+// 整份字型覆蓋：選了之後全部字用同一套（Windows／Mac 看到的結果一致）；''＝原樣
+let fontAll='';
+// 字型優先序：整份指定（fontAll）＞ 自由編輯換的字型（f）＞ 原檔字型（sf）＞ 襯線分類
+const segFont = s => fontAll ? famOf(fontAll) : (s.f ? famOf(s.f) : (srcStack(s.sf) || (s.s ? 'var(--serif)' : '')));
+
 function lines(c,H,ft={}){
   const its=c.items.filter(i=>i.str.trim())
-    .map(i=>({x:i.transform[4], y:H-i.transform[5], t:i.str, w:i.width,
-              b:(ft[i.fontName]||{}).b?1:0, s:(ft[i.fontName]||{}).s?1:0,
+    .map(i=>({x:i.transform[4], y:H-i.transform[5], t:normCJK(i.str), w:i.width,
+              b:(ft[i.fontName]||{}).b?1:0, s:(ft[i.fontName]||{}).s?1:0, sf:(ft[i.fontName]||{}).f||'',
               sz:Math.hypot(i.transform[2],i.transform[3])}))
     .sort((a,b)=>a.y-b.y);
   const out=[]; let cur=null;
@@ -590,13 +620,14 @@ function status(){
 // 文字在 PDF 裡是以「基線」定位，但 CSS 的 top 是行框上緣，兩者相差多少要看實際字型的
 // ascent，猜不得（Times 0.89、正黑 1.08）。實地量一次每種字型組合，之後直接換算。
 const bo={};
-function baseOff(sz,bold,serif){
-  const k=`${sz}|${bold}|${serif}`;
+function baseOff(sz,bold,serif,sf){
+  const k=`${sz}|${bold}|${serif}|${sf||''}`;
   if(bo[k]!=null) return bo[k];
   const p=document.createElement('span');
   p.className='seg';                       // 一定要用跟正文相同的字型來量，否則 ascent 會不一樣
+  const ff=segFont({sz, b:bold, s:serif, sf})||'';
   p.style.cssText=`position:absolute;visibility:hidden;white-space:pre;font-size:${sz}pt;line-height:${sz}pt`
-    +(bold?';font-weight:700':'')+(serif?';font-family:var(--serif)':'');
+    +(bold?';font-weight:700':'')+(ff?';font-family:'+ff:'');
   p.textContent='X';
   const s=document.createElement('span');
   s.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline';
@@ -768,11 +799,11 @@ const mEl=document.createElement('span');
 mEl.className='seg'; mEl.style.cssText='visibility:hidden;left:0;top:0';
 const mCache=new Map();
 function textW(t,s){
-  const k=`${s.sz}|${s.b?1:0}|${s.s?1:0}|${t}`;
+  const k=`${s.sz}|${s.b?1:0}|${s.s?1:0}|${s.sf||''}|${t}`;
   if(mCache.has(k)) return mCache.get(k);
   mEl.style.fontSize=mEl.style.lineHeight=s.sz+'pt';
   mEl.style.fontWeight=s.b?'700':'';
-  mEl.style.fontFamily=s.s?'var(--serif)':'';
+  mEl.style.fontFamily=segFont(s)||'';
   mEl.textContent=t;
   const w=mEl.getBoundingClientRect().width*72/96;
   mCache.set(k,w); return w;
@@ -832,7 +863,7 @@ function reflow(blk){
   const nextLine=ind=>{ emit(); if(line.length) out.push(Object.assign(line,{y}));
                         line=[]; y+=lh; k=0; x=ind; bufX=x; };
   const goto_=nx=>{ emit(); if(x<nx){ x=nx; bufX=x; } };
-  const same=(a,b)=>a&&b&&a.sz===b.sz&&!a.b===!b.b&&!a.s===!b.s&&a.hid===b.hid;
+  const same=(a,b)=>a&&b&&a.sz===b.sz&&!a.b===!b.b&&!a.s===!b.s&&a.hid===b.hid&&a.sf===b.sf;
   // 數字／英文整串不斷開（金額被切一半就看不懂了），中文逐字斷
   const toks=t=>t.match(/[0-9A-Za-z][0-9A-Za-z,.\-\/%]*|[\s\S]/g)||[];
   const add=(t,sty)=>{
@@ -878,13 +909,13 @@ function segs(r, top, rel, pgno, dy=0, path='', half=0){
   // 基準＝列內字級最大的那段（通常是最左的中文）。同字級同字體的列位置不變。
   // 只調表身列，頁首／表尾註照原檔。
   const ref = vmid.checked && rel ? r.reduce((a,s)=>s.sz>a.sz?s:a) : null;
-  const cen = ref && baseOff(ref.sz,ref.b,ref.s)-ref.sz/2;
-  const off = s => ref ? cen+s.sz/2 : baseOff(s.sz,s.b,s.s);
+  const cen = ref && baseOff(ref.sz,ref.b,ref.s,ref.sf)-ref.sz/2;
+  const off = s => ref ? cen+s.sz/2 : baseOff(s.sz,s.b,s.s,s.sf);
   // 地線以下（頁尾）孤立的純數字視為頁碼，換成新頁次（對開時左右各自算）
   const pn=s=>pgno&&r.y>bottomY&&r.length<=2&&/^\d+$/.test(s.t);
   const txt=s=>pn(s) ? String(pgno+Math.floor(s.x/pageW)) : s.t;
   return r.map((s,k)=>[s,k]).filter(([s])=>Math.floor(s.x/pageW)===half)
-    .map(([s,k])=>`<span class=seg ${s.hid?`data-lt="${s.hid}"`:''} ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy+(ref?0:s.y-r.y):s.y+dy)-off(s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.s?';font-family:var(--serif)':''}">${esc(txt(s))}</span>`).join('');
+    .map(([s,k])=>`<span class=seg ${s.hid?`data-lt="${s.hid}"`:''} ${pn(s)?'':`data-p="${path},${k}"`} ${s.w?`data-w="${s.w}"`:''}${s.sf?` data-sf="${esc(s.sf)}"`:''} style="left:${s.x-half*pageW}pt;top:${(rel?dy+(ref?0:s.y-r.y):s.y+dy)-off(s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${segFont(s)?';font-family:'+segFont(s):''}">${esc(txt(s))}</span>`).join('');
 }
 
 // ── 畫面縮放：只縮預覽，列印一律 100%（見 @media print）──
@@ -1194,8 +1225,9 @@ function doPrint(){
   const have=CJK.find(hasFont);
   const list=[...srcFonts].sort();
   const msg='輸出的 PDF 不會沿用原檔的內嵌字型，是用本機字型重新排版的：\n\n'
-    + `　中文　　　${have||'（本機沒有正黑體，會用系統預設中文字型）'}\n`
-    + '　數字／英文　Times New Roman\n\n'
+    + (fontAll
+        ? `　整份字型　　${fontAll}${hasFont(fontAll)?'':'　⚠本機沒有，會用系統字型替代'}\n`
+        : `　中文　　　${have||'（本機沒有正黑體，會用系統預設中文字型）'}\n　數字／英文　Times New Roman\n`)
     + (list.length ? `　原檔字型　　${list.slice(0,6).join('、')}${list.length>6?` 等 ${list.length} 種`:''}\n\n`:'')
     + '每段字寬都壓回了原檔寬度，版面不會跑掉，但字形細節與原檔不同。要繼續嗎？';
   if(!confirm(msg)) return;
@@ -1212,6 +1244,10 @@ const FONTS=[['微軟正黑體',"'微軟正黑體','Microsoft JhengHei',sans-ser
 const famOf = n => (FONTS.find(f=>f[0]===n)||[])[1];
 fontSel.innerHTML='<option value="">（原樣）</option>'
   + FONTS.map(([n])=>`<option value="${n}">${n}${hasFont(n)?'':' ⚠本機無'}</option>`).join('');
+// 整份字型：一般模式套用到全部文字（rows／head／note 都換），進自由編輯時寫成 f 一起存檔
+fnAll.innerHTML='<option value="">（原樣）</option>'
+  + FONTS.map(([n])=>`<option value="${n}">${n}${hasFont(n)?'':' ⚠本機無'}</option>`).join('');
+fnAll.onchange = () => { fontAll=fnAll.value; units.length && render(); };
 fontSel.onchange = () => {
   const ids=[...fsels].filter(id=>catOf(id)==='t');
   if(!ids.length) return;
@@ -1251,12 +1287,14 @@ function freeFromLayout(){
       const b=st.fontWeight==='700'?1:0, s=/serif/.test(st.fontFamily)?1:0;
       // 表身的字包在 .row 裡、top 是相對列的，要加上列本身的位置；頁首與註直接掛在頁上
       const par=e.parentElement, dy=par.classList.contains('row')?parseFloat(par.style.top):0;
-      const o={ x:parseFloat(st.left), y:parseFloat(st.top)+dy+baseOff(sz,b,s),  // 存回基線（ftop 會再減一次）
-                t:e.textContent, sz, b, s, w:+e.dataset.w||0 };
+      const o={ x:parseFloat(st.left), y:parseFloat(st.top)+dy+baseOff(sz,b,s,e.dataset.sf||''),  // 存回基線（ftop 會再減一次）
+                t:e.textContent, sz, b, s, sf:e.dataset.sf||'', w:+e.dataset.w||0 };
       if(e.dataset.lt) o.hid=+e.dataset.lt;
       return o;
     })
   }));
+  // 整份字型在一般模式只是顯示覆蓋，進自由編輯要落地成 f，存檔才帶得走
+  if(fontAll) fpages.forEach(p=>p.t.forEach(s=>s.f=fontAll));
   W=pageW;
   pagesize.textContent=`@page{size:${pageW}pt ${H}pt;margin:0}`;
   renderFree();
@@ -1276,6 +1314,8 @@ async function loadSaved(file){
   let d; try{ d=JSON.parse(await file.text()); }catch(e){ return fail('這個 .json 讀不出來：'+e.message); }
   if(!d || !Array.isArray(d.fpages) || !d.fpages.length) return fail(`「${file.name}」不是自由編輯的存檔`);
   fpages=d.fpages; pageW=W=d.pageW||fpages[0].w; H=d.H||fpages[0].h;
+  // 舊存檔可能存了部首字元，讀回時一併正規化
+  fpages.forEach(p=>p.t.forEach(s=>s.t=normCJK(s.t)));
   buf=null; freeName=d.name||file.name;
   freeMode.checked=true; document.body.classList.add('free');
   fsels.clear(); fundoS=[]; fredoS=[];
@@ -1307,7 +1347,7 @@ async function loadFree(doc){
 }
 
 const fobj = id => { const [k,p,i]=id.split(','); return k==='l' ? fpages[p].l[i] : fpages[p].t[i]; };
-const ftop = o => o.sz ? o.y-baseOff(o.sz,o.b,o.s) : o.y;
+const ftop = o => o.sz ? o.y-baseOff(o.sz,o.b,o.s,o.sf) : o.y;
 const fel = id => out.querySelector(`[data-o="${id}"]`);
 
 function renderFree(){
@@ -1319,7 +1359,7 @@ function renderFree(){
     pageW=p.w;                                        // lnBox 用得到（自由模式一頁一版，k=0）
     capEnds(p.l);                                     // 線被搬過／改過長度，接合狀態要重算
     el.innerHTML = p.l.map((l,i)=>`<div class=ln data-o="l,${pi},${i}" style="${lnBox(l,0)}"></div>`).join('')
-      + p.t.map((s,i)=>`<span class=seg ${s.hid?`data-lt="${s.hid}"`:''} data-o="t,${pi},${i}" ${s.w?`data-w="${s.w}"`:''} style="left:${s.x}pt;top:${ftop(s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${s.f?`;font-family:${famOf(s.f)}`:s.s?';font-family:var(--serif)':''}">${esc(s.t)}</span>`).join('');
+      + p.t.map((s,i)=>`<span class=seg ${s.hid?`data-lt="${s.hid}"`:''} data-o="t,${pi},${i}" ${s.w?`data-w="${s.w}"`:''}${s.sf?` data-sf="${esc(s.sf)}"`:''} style="left:${s.x}pt;top:${ftop(s)}pt;font-size:${s.sz}pt;line-height:${s.sz}pt${s.b?';font-weight:700':''}${segFont(s)?';font-family:'+segFont(s):''}">${esc(s.t)}</span>`).join('');
     sheet.appendChild(el); out.appendChild(sheet);
   });
   paintFsel(); bindFree(); fitWidths();
