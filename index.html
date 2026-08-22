@@ -838,7 +838,12 @@ function reflow(blk){
   const flat=blk.flatMap(r=>r.map(s=>({...s})));
   const xPre=flat[0].x; let xMark=xPre, xText=xPre;
   for(let i=0;i<flat.length;i++) if(isNum(flat[i].t)){
-    xMark=flat[i].x; xText=flat[i+1]?flat[i+1].x:xMark; break; }
+    xMark=flat[i].x;
+    // 條號黏著內文（「2.本年度…」）時，flat 的下一段是同一行右邊的續段、不是內文——
+    // 長債拿它當內文欄會算成 549，每行只剩 28pt，8 行炸成 142 行。改用條號本身的寬度推。
+    const m=/^(\d+[.、])([\s\S]*)$/.exec(flat[i].t.trim());
+    xText = m && m[2] ? xMark+textW(m[1], flat[i]) : (flat[i+1]?flat[i+1].x:xMark);
+    break; }
   // 原檔的註排到第幾個半頁為止就接到哪：長債的註整段只佔左半，不該被攤成兩頁寬
   const N=Math.max(1, ...flat.map(s=>Math.floor(s.x/pageW)+1));
   // 右緣取框線與原檔註本身的較大者：有些檔的註比表格寬（固資成本效益排到 604，框線只到 577），
@@ -857,11 +862,13 @@ function reflow(blk){
   });
   if(!items.length) items.push({mark:null, runs:pre.splice(0)});
 
-  const out=[]; let k=0, y=ys[0], x=xPre, line=[], buf='', bufX=x, st=null;
+  // 註整段只在右半頁時（員工人數），起點與換行都要回到它自己那一半，不是從左半重新起算
+  const k0=Math.min(N-1, Math.floor(xPre/pageW));
+  const out=[]; let k=k0, y=ys[0], x=xPre, line=[], buf='', bufX=x, st=null;
   const emit=()=>{ if(buf){ line.push({...st, t:buf, x:bufX, y, w:0}); buf=''; } bufX=x; };
   const nextHalf=()=>{ emit(); k++; x=lo(k); bufX=x; };
   const nextLine=ind=>{ emit(); if(line.length) out.push(Object.assign(line,{y}));
-                        line=[]; y+=lh; k=0; x=ind; bufX=x; };
+                        line=[]; y+=lh; k=k0; x=ind; bufX=x; };
   const goto_=nx=>{ emit(); if(x<nx){ x=nx; bufX=x; } };
   const same=(a,b)=>a&&b&&a.sz===b.sz&&!a.b===!b.b&&!a.s===!b.s&&a.hid===b.hid&&a.sf===b.sf;
   // 數字／英文整串不斷開（金額被切一半就看不懂了），中文逐字斷
@@ -876,12 +883,14 @@ function reflow(blk){
       buf+=tk; x+=w;
     }
   };
-  // 「註：」開頭的前綴跟第一條同排；整段前文（條號黏在「註：1.…」裡時）先換行再排條號
+  // 「註：」開頭的前綴跟第一條同排；整段前文（條號黏在「註：1.…」裡時）先換行再排條號。
+  // 門檻要比「內文欄」寬才算長前綴——「註：」本來就會稍微越過條號欄（實測 22pt vs 20.8pt），
+  // 拿條號欄當門檻會把每一份註的「註：」都推成獨立一行。
   const preW=pre.reduce((a,s)=>a+textW(s.t,s),0);
   pre.forEach(s=>add(s.t,s));
   items.forEach((it,i)=>{
     if(i) nextLine(xMark);
-    else if(it.mark && preW>(xMark-xPre)+1) nextLine(xMark);
+    else if(it.mark && preW>(xText-xPre)) nextLine(xMark);
     else if(it.mark) goto_(xMark);
     if(it.mark){ add(it.mark.t, it.mark); goto_(xText); }
     it.runs.forEach(s=>add(s.t,s));
