@@ -119,6 +119,7 @@
     <label title="表身上下留白，避免字壓到天地線">邊界 上<input type="number" id="padT" value="2" min="0" max="60" step="1" style="width:3.4em">
       下<input type="number" id="padB" value="2" min="0" max="60" step="1" style="width:3.4em">pt</label>
     <label title="表尾註第一列距地線多遠（只影響註，與上下邊界無關）">註起始<input type="number" id="noteY" value="0" min="-200" max="200" step="1" style="width:3.8em">pt</label>
+    <button id="reflowB" title="把表尾註整段接起來重新斷行（改完字之後用）；對開表會跨兩張紙接排">重排備註</button>
     <label title="列高再怎麼壓縮都不低於這個值">最小列高<input type="number" id="minLh" value="0" min="0" max="60" step="0.5" style="width:3.8em">pt</label>
     <label title="最後一頁列不滿時，尾端的合計／總計列沉到地線上方，中間留白"><input type="checkbox" id="sink"> 合計貼地線</label>
     <label title="列高被拉開時，文字落在上下兩列的中間，而不是貼著自己那條基線"><input type="checkbox" id="vmid" checked> 文字置中</label>
@@ -246,6 +247,7 @@ sink.onchange = () => units.length && render();
 padT.oninput = padB.oninput = () => { PADT=+padT.value||0; PADB=+padB.value||0; units.length && relayout(); };
 // 註起始＝第一列註距地線的 pt；其餘註列維持彼此的相對距離
 noteY.oninput = () => { NOTEY=+noteY.value||0; units.length && render(); };
+reflowB.onclick = reflowNote;
 guide.onchange = () => units.length && render();
 vmid.onchange = () => units.length && render();
 minLh.oninput = () => { minLH=+minLh.value||0; units.length && render(); };
@@ -318,7 +320,7 @@ async function load(){
   const tail = note[note.length-1] || [];
   // 註起始預設沿用原檔（表尾註的第一列距地線多遠；騎在線上時是負的）
   NOTEY = tail.length ? +(Math.min(...tail.map(r=>r.y))-bottomY).toFixed(1) : 0;
-  noteY.value = NOTEY; noteY.parentElement.style.display = tail.length?'':'none';
+  noteY.value = NOTEY; noteY.parentElement.style.display = reflowB.style.display = tail.length?'':'none';
 
   rows=[]; units=[]; breaks=[]; sel.clear(); undoS=[]; redoS=[]; selSeg.clear();
   avgPg.clear(); locks.clear(); minLH=0; dragI=lastI=null;
@@ -731,6 +733,97 @@ function move(pi,d){
   breaks=breaks.filter((b,i)=>b>(i?breaks[i-1]:0));            // 搬空的頁就刪掉，不留空白頁
   remapLocks(b=>b);                                            // 頁被刪掉時，指向它的鎖也一併清掉
   render();
+}
+
+// ── 重排表尾註 ──
+// 註在原檔是一串絕對定位的片段、斷行是寫死的，所以雙擊改完字之後後面的字不會跟著跑。
+// 這裡把整段接起來重新斷行：條號（1. 2.）各自成一條、續行縮排到條號後面，
+// 排到半頁右緣就接到下一個半頁繼續——對開表的註本來就是橫跨兩張紙的一行。
+// 代價：重排後用的是本機字型的度量，不再是原檔的 data-w，行尾位置會跟原檔差一點。
+
+// 量字寬：拿一個隱藏的 .seg 來量，字型／fallback 與畫面上完全一致（放在 out 外面，不吃 zoom）
+// 量完就拿掉，不留在 DOM 裡——藏在版面外的元素仍算進版面寬度，Chrome 列印會為了「符合寬度」整份縮小
+const mEl=document.createElement('span');
+mEl.className='seg'; mEl.style.cssText='visibility:hidden;left:0;top:0';
+const mCache=new Map();
+function textW(t,s){
+  const k=`${s.sz}|${s.b?1:0}|${s.s?1:0}|${t}`;
+  if(mCache.has(k)) return mCache.get(k);
+  mEl.style.fontSize=mEl.style.lineHeight=s.sz+'pt';
+  mEl.style.fontWeight=s.b?'700':'';
+  mEl.style.fontFamily=s.s?'var(--serif)':'';
+  mEl.textContent=t;
+  const w=mEl.getBoundingClientRect().width*72/96;
+  mCache.set(k,w); return w;
+}
+
+function reflowNote(){
+  let bi=note.length-1; while(bi>0 && !note[bi].length) bi--;
+  const blk=note[bi];
+  if(!blk || !blk.length) return;
+  // 對開表用單頁模式開時，每一份註只是整句話的左半或右半，接起來會是錯的
+  if(!spread.checked && note.filter(p=>p.length).length>1)
+    return alert('這份的註被拆在左右半頁，接起來會是錯的。請先勾「對開表」再重排。');
+  push();
+  document.body.appendChild(mEl);
+  try{ note[bi]=reflow(blk); } finally { mEl.remove(); }
+  render();
+}
+
+function reflow(blk){
+  // 左右邊界取自框線的橫線（每個半頁同一組邊界）
+  const hs=frame.filter(l=>l.w && l.x<pageW);
+  const mL=hs.length?Math.min(...hs.map(l=>l.x)):30;
+  const mR=hs.length?Math.max(...hs.map(l=>l.x+l.w)):pageW-30;
+  const lo=k=>k*pageW+mL;
+  // 行高沿用原檔註的列距；只有一列時用字級推
+  const ys=blk.map(r=>r.y), sz=rowSz(blk[0])||11;
+  const gaps=ys.slice(1).map((y,i)=>y-ys[i]).filter(g=>g>1).sort((a,b)=>a-b);
+  const lh=gaps.length?gaps[gaps.length>>1]:sz*1.35;
+  // 條號在原檔各自是一個片段，用它切條，也用它抓「條號欄」與「內文欄」兩個縮排
+  const isNum=t=>/^\d+[.、]$/.test(t.trim());
+  const flat=blk.flatMap(r=>r.map(s=>({...s})));
+  const xPre=flat[0].x; let xMark=xPre, xText=xPre;
+  for(let i=0;i<flat.length;i++) if(isNum(flat[i].t)){
+    xMark=flat[i].x; xText=flat[i+1]?flat[i+1].x:xMark; break; }
+  // 原檔的註排到第幾個半頁為止就接到哪：長債的註整段只佔左半，不該被攤成兩頁寬
+  const N=Math.max(1, ...flat.map(s=>Math.floor(s.x/pageW)+1));
+  // 右緣取框線與原檔註本身的較大者：有些檔的註比表格寬（固資成本效益排到 604，框線只到 577），
+  // 一律用框線會把它壓窄、平白多擠出一行
+  const rEdge=[]; for(let k=0;k<N;k++) rEdge[k]=Math.max(k*pageW+mR,
+      ...flat.filter(s=>Math.floor(s.x/pageW)===k).map(s=>s.x+(s.w||0)));
+  const hi=k=>rEdge[k];
+  const items=[]; const pre=[]; let cur=null;
+  flat.forEach(s=>{ if(isNum(s.t)) items.push(cur={mark:s, runs:[]}); else (cur?cur.runs:pre).push(s); });
+  if(!items.length) items.push({mark:null, runs:pre.splice(0)});
+
+  const out=[]; let k=0, y=ys[0], x=xPre, line=[], buf='', bufX=x, st=null;
+  const emit=()=>{ if(buf){ line.push({...st, t:buf, x:bufX, y, w:0}); buf=''; } bufX=x; };
+  const nextHalf=()=>{ emit(); k++; x=lo(k); bufX=x; };
+  const nextLine=ind=>{ emit(); if(line.length) out.push(Object.assign(line,{y}));
+                        line=[]; y+=lh; k=0; x=ind; bufX=x; };
+  const goto_=nx=>{ emit(); if(x<nx){ x=nx; bufX=x; } };
+  const same=(a,b)=>a&&b&&a.sz===b.sz&&!a.b===!b.b&&!a.s===!b.s&&a.hid===b.hid;
+  // 數字／英文整串不斷開（金額被切一半就看不懂了），中文逐字斷
+  const toks=t=>t.match(/[0-9A-Za-z][0-9A-Za-z,.\-\/%]*|[\s\S]/g)||[];
+  const add=(t,sty)=>{
+    if(!same(st,sty)){ emit(); st=sty; }
+    for(const tk of toks(t)){
+      const w=textW(tk,sty);
+      // 放不下就換半頁；最後一個半頁也滿了就換行。換完還是放不下就再換一次，最多繞一圈
+      for(let g=0; g<N && x+w>hi(k)+.5 && x>lo(k); g++) k<N-1 ? nextHalf() : nextLine(xText);
+      if(!buf && !line.length && /^\s+$/.test(tk)) continue;      // 行首的空白丟掉
+      buf+=tk; x+=w;
+    }
+  };
+  pre.forEach(s=>add(s.t,s));
+  items.forEach((it,i)=>{
+    if(i) nextLine(xMark); else if(it.mark) goto_(xMark);
+    if(it.mark){ add(it.mark.t, it.mark); goto_(xText); }
+    it.runs.forEach(s=>add(s.t,s));
+  });
+  emit(); if(line.length) out.push(Object.assign(line,{y}));
+  return out;
 }
 
 const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;');
