@@ -112,6 +112,7 @@
 <div id="ctl">
   <span class="g">
     <input type="file" id="f" accept="application/pdf,.json">
+    <label class="tbl" title="跳過前面的封面／目次，從這一頁開始讀">起始頁<input type="number" id="fromPg" value="1" min="1" step="1" style="width:3.4em"></label>
     <label class="tbl"><input type="checkbox" id="spread"> 對開表</label>
     <label id="freeLbl" title="不分列不分頁，整份原樣攤開，只搬移／編輯文字方塊與線條"><input type="checkbox" id="freeMode"> 自由編輯</label>
   </span>
@@ -193,7 +194,7 @@
     <p>天地線、欄線、頁首、字型與框線粗細全部從原檔讀出來<br>只調整資料列落在哪一頁，版面不動</p>
   </div>
   <div id="err"></div>
-  <small>只吃文字型 PDF，掃描檔沒有文字圖層。表格需有橫貫全寬的天地線。自由編輯的 .json 存檔也可以拖進來。<br>
+  <small>只吃文字型 PDF，掃描檔沒有文字圖層。表格需有橫貫全寬的天地線；無框線的純文字文件也可以，邊界改由內容決定。自由編輯的 .json 存檔也可以拖進來。<br>
   檔案不會上傳，全部在你這台電腦的瀏覽器裡處理。</small>
 </div>
 
@@ -213,6 +214,8 @@ let minLH=0;
 const avgPg=new Set();        // 要平均列高的頁（非最後一頁本來就是平均的）
 const locks=new Set();        // 鎖住的分頁點，以「第幾個 unit 之後斷頁」記，不受其他頁增減影響
 let W=595,pageW=595,H=842, frame=[], frames=[], head=[], note=[], rows=[], units=[], breaks=[], PADT=2, PADB=2, NOTEY=0, topY=0, bodyTop=0, bodyBot=800, bottomY=800, pgBots=[], fillY=800, LH=7, perPage=1;
+// 這份是非表格型（純文字內文）嗎：決定 render() 要等高排列還是保留原檔列距
+let noFrameDoc=false;
 const sel=new Set();
 
 let buf=null;
@@ -241,6 +244,8 @@ addEventListener('dragover', e=>e.preventDefault());
 addEventListener('drop', e=>e.preventDefault());
 // 切換對開要重新解析原檔，推拉／群組／鎖定／改字全部歸零，undo 也救不回來（load() 會清空 undoS）。
 // 沒動過就不打擾：undoS 為空代表本來就沒東西可丟。
+// 起始頁跟對開一樣要重讀原檔，改動同樣會被清掉
+fromPg.onchange = () => { if(buf) queueLoad(); };
 spread.onchange = () => {
   if(undoS.length && !confirm('切換對開表會重新載入原檔，目前的推拉／群組／鎖定／改字都會清掉。要繼續嗎？'))
     return spread.checked=!spread.checked;
@@ -268,7 +273,9 @@ async function load(){
   // 對開：奇數頁是左半、偶數頁是右半，兩頁併成一個「版」（右半的 x 平移一個頁寬）
   const N = spread.checked ? 2 : 1;
   const all=[], pgBot=[], frs=[];
-  for(let p=1;p<=doc.numPages;p+=N){
+  // 起始頁：封面／目次跟內文是兩種版面，混在一起讀會用目次的表格線去框內文
+  const P0 = Math.min(Math.max(1, +fromPg.value||1), doc.numPages);
+  for(let p=P0;p<=doc.numPages;p+=N){
     let txt=[], fr=[];
     for(let k=0;k<N && p+k<=doc.numPages;k++){
       const pg=await doc.getPage(p+k), vp=pg.getViewport({scale:1});
@@ -276,19 +283,25 @@ async function load(){
       const dx=k*pageW;
       const c=await pg.getTextContent();
       await pg.getOperatorList();          // 跑過才會把字型載進 commonObjs，粗體資訊在那裡
+      markBold(c, await synthBold(pg));    // 合成粗體（Tr=2）——字型名判斷不到
       txt.push(...markPale(lines(c, H, fonts(pg,c)), await pale(pg)).map(r=>shift(r,dx)));
       fr.push(...(await getFrame(pg,H)).map(l=>({...l, x:l.x+dx})));
     }
     W = pageW*N;
-    if(p===1) frame=fr;
+    if(p===P0) frame=fr;
     // 每頁的地線各自量：末頁常把地線往上收，好在下面空出表尾註的位置
     all.push(merge(txt)); pgBot.push(spanning(fr).pop()); frs.push(fr);
   }
   // 欄線 x 相同的頁共用同一份框線。一般連續表整份只有一種；對開表用單頁模式開會有兩種
   // （左半欄線 254/368/473/577、右半 135/240/345/450），共用首頁那份就字線對不上。
   // 不逐頁各畫自己那份——原檔地線常有幾 pt 的抖動（固資成本效益 783～788），會在頁間跳。
+  // 非表格型（純文字內文）：天地線要有兩條以上、且各自橫貫頁寬的一半以上。
+  // 不能只問「有沒有水平線」——內文頁常有一條短底線（實測 x=43 w=144），
+  // 而 spanning() 是拿線自己的左右界當基準，單獨一條短線會被當成「全寬」。
+  // 門檻用 pageW 不是 W：對開時 W 是兩頁寬，全寬線只跨其中半邊。
+  const noFrame = noFrameDoc = new Set(frame.filter(l=>!l.h && l.w > pageW*.5).map(l=>Math.round(l.y))).size < 2;
   const canon = new Map();
-  frames = frs.map(f => {
+  frames = noFrame ? frs : frs.map(f => {
     // 有半邊完全沒線的（對開表頁數是奇數時，末版只有左半）沿用首版框線——
     // 但只取原頁有線的那半，空的那半張紙保持空白：拿首版另一半的線去補，
     // 會畫出一張只有線、沒有字的幽靈表格頁（列印多一張空白格線頁）
@@ -305,18 +318,21 @@ async function load(){
   });
   new Set(frames).forEach(capEnds);          // 線的幾何載入後就不再變，算一次就好
   // 固定頁首 = 表頭橫線以上的內容（首頁一份、續頁一份，原樣不動）
-  const hy = spanning(frame);
+  const hy = noFrame ? [0,H] : spanning(frame);
   bottomY = hy[hy.length-1];
   // 表頭那幾條橫線彼此靠得近，資料區則是一大段空白；斷在第一個大間距處
   let si=0; while(si+1<hy.length-1 && hy[si+1]-hy[si]<100) si++;
   const sep = hy[si];
   // 地線以下：純數字（≤2 段）是頁碼，跟著頁首走；其餘是表尾註，只畫在最後一頁
   const isPgNo = r => r.length<=2 && r.every(s=>/^\d+$/.test(s.t));
+  // 無框線時 bots[i] 等於紙高，「地線以下」永遠不成立，頁碼會混進資料列被推到下一頁。
+  // 改以紙張最下段（y > 頁高 × 0.9）認頁碼。
+  const atPgNo = (r,bot) => isPgNo(r) && (noFrame ? r.y > H*.9 : r.y > bot);
   // 分列／分註只認「比首頁高」的地線：量不到全寬線的頁（spanning 退回整頁）沿用首頁值。
   // 版面基準（平均列高、註起始）仍一律用首頁的 bottomY；末頁的框線另外在 render() 收上去。
-  const bots = pgBot.map(b=>Math.min(b, bottomY));
+  const bots = noFrame ? pgBot.map(()=>bottomY) : pgBot.map(b=>Math.min(b, bottomY));
   pgBots = bots;
-  head = all.map((pg,i)=>pg.filter(r=>r.y<=sep || (r.y>bots[i] && isPgNo(r))));
+  head = all.map((pg,i)=>pg.filter(r=>r.y<=sep || atPgNo(r,bots[i])));
   // 註常常騎在地線上（前一兩列在線上、其餘在線下），只看地線會把它切成兩半。
   // 實測 13 個公文檔：「註／附註／說明」開頭的列一定是該頁最後一段，之後同頁沒有
   // 資料列，所以從該列起算到頁尾都是註。限在頁面下段，避免表中真有「註」開頭的資料列。
@@ -331,7 +347,7 @@ async function load(){
       : (i>0 && nfOwn[i-1]<Infinity) ? {v:nfOwn[i-1]-8, carr:true}
       : (i>0 && nfEff[i-1] && nfEff[i-1].v<Infinity) ? {v:nfEff[i-1].v, carr:true}
       : {v:Infinity, carr:false};
-  const isNote = (r,nf,bot) => !isPgNo(r) && (r.y>bot
+  const isNote = (r,nf,bot) => !noFrame && !isPgNo(r) && (r.y>bot
       || (r.y>=nf.v && (!nf.carr || /[\u4e00-\u9fff]/.test(r.map(s=>s.t).join('')))));
   // 註留在它原本那一頁。對開表用單頁模式開時，左右半頁的註是同幾句話的左右兩半、內容不同，
   // 全部收成一份畫在末頁就會疊成一團（用人費用、固資來源、固資成本效益、OF-08-基金 都會）。
@@ -346,7 +362,7 @@ async function load(){
   avgPg.clear(); locks.clear(); minLH=0; dragI=lastI=null;
   all.forEach((pg,i)=>{
     const nf=nfEff[i];
-    const body=pg.filter(r=>r.y>sep && r.y<=bots[i] && !isNote(r,nf,bots[i]));
+    const body=pg.filter(r=>r.y>sep && r.y<=bots[i] && !isNote(r,nf,bots[i]) && !atPgNo(r,bots[i]));
     rows.push(...body); units.push(...body.map(r=>[r]));
     breaks.push(units.length);
   });
@@ -355,12 +371,20 @@ async function load(){
   const nNote = note.reduce((a,p)=>a+p.length,0);
   if(!rows.length){ fail(nNote>50
     ? `找不到表身資料列（地線以下被判成註的有 ${nNote} 列）。這份看起來不是單一連續表格，請先切出單一張表再試。`
-    : '表身範圍內找不到可調整的資料列（需為文字型 PDF，且表格有橫貫全寬的天地線）'); return; }
+    : '找不到可調整的資料列（需為文字型 PDF，掃描檔沒有文字圖層）'); return; }
 
   // 表身格線：起始 y 與行高取自原檔
   topY = rows[0].y;
   const gaps = rows.slice(1,40).map((r,i)=>r.y-rows[i].y).filter(g=>g>1);
   LH = gaps.sort((a,b)=>a-b)[Math.floor(gaps.length/2)] || 7;
+  // 無框線：地線 = 原檔內容最底 + 一個行高。不收的話 bottomY 是紙高，
+  // bodyBot 只離紙邊 PADB，列可以被推到列印邊界外。
+  if(noFrame){
+    // 頁碼被抽去當固定頁首了，地線不能低於它，否則列推到底會壓在頁碼上
+    const pnY = Math.min(...head.flat().map(r=>r.y), Infinity);
+    bottomY = Math.min(H, Math.max(...rows.map(r=>r.y)) + LH, pnY-2);
+    pgBots = pgBots.map(()=>bottomY);
+  }
   // 紙張尺寸跟著來源 PDF 走；寫死 A4 的話，非 A4 的原稿列印時會被整份縮小
   pagesize.textContent=`@page{size:${pageW}pt ${H}pt;margin:0}`;
   drop.classList.add('hide');
@@ -421,10 +445,48 @@ let fontAll='';
 // 字型優先序：整份指定（fontAll）＞ 自由編輯換的字型（f）＞ 原檔字型（sf）＞ 襯線分類
 const segFont = s => fontAll ? famOf(fontAll) : (s.f ? famOf(s.f) : (srcStack(s.sf) || (s.s ? 'var(--serif)' : '')));
 
+// Word 對沒有粗體字面的字型（標楷體 DFKaiShu-SB-Estd-BF）用「填色＋描邊」做合成粗體，
+// 也就是文字繪製模式 Tr=2。字型名裡沒有 Bold，只看名字會把整份公文的粗體標題判成細體。
+// 回傳一個「依繪製順序的字元 → 是否粗體」陣列，跟 getTextContent 對位（見 markBold）。
+// ponytail: 不用字串比對——同一頁常有同樣的詞一處粗一處不粗（實測「單位」），會整批誤標。
+async function synthBold(pg){
+  const ops=await pg.getOperatorList(), OPS=U.OPS, out=[];
+  let tr=0, st=[];
+  for(let i=0;i<ops.fnArray.length;i++){
+    const fn=ops.fnArray[i], a=ops.argsArray[i];
+    if(fn===OPS.save) st.push(tr);
+    else if(fn===OPS.restore) tr=st.length?st.pop():tr;
+    else if(fn===OPS.setTextRenderingMode) tr=a[0];
+    else if(fn===OPS.showText || fn===OPS.showSpacedText)
+      for(const g of (a[0]||[])) if(g && typeof g==='object' && g.unicode)
+        for(const ch of g.unicode) if(!/\s/.test(ch)) out.push([ch, tr===2]);
+  }
+  return out;
+}
+// operator list 與 getTextContent 走的是同一份 content stream、順序一致，
+// 用「第幾個非空白字元」對位。指標只往前走，對不上就往前找一小段（ToUnicode 缺字時會有落差），
+// 找不到就放棄這個字，不會把後面全部帶偏。
+function markBold(c, flags){
+  if(!flags.length) return c;
+  let k=0;
+  for(const it of c.items){
+    if(!it.str || !it.str.trim()) continue;
+    let bold=false;
+    for(const ch of it.str){
+      if(/\s/.test(ch)) continue;
+      let j=k, lim=Math.min(flags.length, k+8);
+      while(j<lim && flags[j][0]!==ch) j++;
+      if(j<lim){ bold = bold || flags[j][1]; k=j+1; }
+    }
+    if(bold) it.__b=1;
+  }
+  return c;
+}
+
 function lines(c,H,ft={}){
   const its=c.items.filter(i=>i.str.trim())
     .map(i=>({x:i.transform[4], y:H-i.transform[5], t:normCJK(i.str), w:i.width,
-              b:(ft[i.fontName]||{}).b?1:0, s:(ft[i.fontName]||{}).s?1:0, sf:(ft[i.fontName]||{}).f||'',
+              b:((ft[i.fontName]||{}).b||i.__b)?1:0, s:(ft[i.fontName]||{}).s?1:0, sf:(ft[i.fontName]||{}).f||'',
               sz:Math.hypot(i.transform[2],i.transform[3])}))
     .sort((a,b)=>a.y-b.y);
   const out=[]; let cur=null;
@@ -720,6 +782,17 @@ function render(){
     // 中間留白；其餘列位置與行距都不動（跟「平均列高」把整頁拉開不同）
     const cy = mid ? -(lh-LH)/2 : 0;
     const pg=units.slice(start,end);
+    // 非表格型文件：列距本來就不一致（段落、條列、內嵌表格的儲存格高度都不同），
+    // 一律等高會把版面拉爛，內嵌表格的字還會跟自己那頁的框線錯開。
+    // 保留原檔的相對列距，只有這頁排不下時整體等比壓縮。勾「平均列高」可切回等高。
+    let ly=null, lyH=lh;
+    if(noFrameDoc && !avg && pg.length){
+      const y0=pg[0][0].y, acc=pg.map(u=>u[0].y-y0);
+      const need=acc[acc.length-1]+(pg[pg.length-1].length-1)*LH;
+      const avail=botLimit-bodyTop;
+      const k = need>avail && need>0 ? avail/need : 1;
+      ly=acc.map(v=>v*k); lyH=LH*k;
+    }
     const isTot=u=>/^[\s　]*[合總][\s　]*計/.test(u[0].map(s=>s.t).join(''));
     let tot=0; if(last && sink.checked) while(tot<pg.length && isTot(pg[pg.length-1-tot])) tot++;
     const sunk = tot ? Math.max(0, botLimit-(bodyTop+(n-1)*lh)) : 0;
@@ -730,12 +803,12 @@ function render(){
         const e=document.createElement('div');
         e.className='row'+(sel.has(start+i)?' sel':'')+(u.length>1?' grp':'');
         // 框往上抬 0.8 行，讓可點擊範圍蓋住文字本身而不是它下面那行
-        e.style.cssText=`left:0;top:${bodyTop+li*lh+dy-cy-lh*.8}pt;width:100%;height:${u.length*lh}pt`;
+        e.style.cssText=`left:0;top:${(ly ? bodyTop+ly[i]+dy-lyH*.8 : bodyTop+li*lh+dy-cy-lh*.8)}pt;width:100%;height:${u.length*(ly?lyH:lh)}pt`;
         e.draggable=!editMode.checked;   // 編輯模式下不拖曳，否則點字會變成拖列
         // 拖曳是「重排」，跨頁時次頁會遞補一列回來；要真的把列推到下頁得用頁間按鈕
         e.title='拖曳＝與目標列交換位置（跨頁時次頁會遞補一列回來）\n要把最後一列推到下頁，請用頁與頁之間的「↓ 最後一列推到下頁」';
       e.dataset.i=start+i;
-        e.innerHTML=u.map((r,j)=>segs(r,0,true,0,j*lh+lh*.8,`u,${start+i},${j}`,k)).join('');
+        e.innerHTML=u.map((r,j)=>segs(r,0,true,0,j*(ly?lyH:lh)+(ly?lyH:lh)*.8,`u,${start+i},${j}`,k)).join('');
         h.appendChild(e);
       });
       li+=u.length;
@@ -743,7 +816,7 @@ function render(){
     out.appendChild(sheet);
     const b=document.createElement('div'); b.className='brk';
     const lk=locks.has(end);
-    b.innerHTML=`<b>第 ${pi+1} 頁</b>　列高 ${lh.toFixed(1)}pt
+    b.innerHTML=`<b>第 ${pi+1} 頁</b>　${ly?`原行距${lyH<LH-.05?`（壓縮至 ${(lyH/LH*100).toFixed(0)}%）`:''}`:`列高 ${lh.toFixed(1)}pt`}
       <label title="從本頁套用到下一個鎖定的分頁點為止"><input type=checkbox data-a=1 ${avg?'checked':''}> 平均列高（到下一個鎖定點）</label>`
       + (last?'':`　<button data-k=1 title="鎖住後這個分頁點不能移動">${lk?'🔒 已鎖':'🔓 鎖定'}</button>
         <button data-d="-1" ${lk?'disabled':''}>↓ 最後一列推到下頁</button>
