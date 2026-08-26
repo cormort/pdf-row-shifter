@@ -2,7 +2,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PDF 資料列分頁調整</title>
 <style>
-  :root{--bg:#e9eaee;--bar:#fbfbfd;--line:#d6d8de;--ink:#22252b;--dim:#6b7280;--acc:#4285f4}
+  :root{--bg:#e9eaee;--bar:#fbfbfd;--line:#d6d8de;--ink:#22252b;--dim:#6b7280;--acc:#4285f4;--ctlH:44px}
   body{font:13px/1.5 -apple-system,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif;margin:0;background:var(--bg);color:var(--ink)}
   #ctl{position:sticky;top:0;background:var(--bar);padding:7px 12px;z-index:10;border-bottom:1px solid var(--line);
        box-shadow:0 1px 6px #0000001a;display:flex;flex-wrap:wrap;align-items:center;gap:5px}
@@ -17,6 +17,8 @@
        border-radius:6px;background:#fff;color:var(--ink);cursor:pointer}
   #ctl input[type=file]::file-selector-button:hover{border-color:var(--acc);color:var(--acc)}
   #ctl .lbl{color:var(--dim)}
+  /* 群標題：說明這一組的「操作範圍」，小而淡，不搶控制項 */
+  #ctl .gt{font-size:11px;color:var(--dim);opacity:.75;white-space:nowrap;margin-right:2px}
   #ctl .lbl b{font-weight:600;color:var(--ink)}
   /* 編輯文字是「模式」不是選項，開著時整個 label 變橘底，免得使用者忘了自己還在編輯模式 */
   /* 編輯文字一律上橘底，讓它在工具列裡一眼找得到（不是狀態指示） */
@@ -27,7 +29,30 @@
   #ctl .pri{background:var(--acc);border-color:var(--acc);color:#fff}
   #ctl .pri:hover{background:#3b78e7;border-color:#3b78e7;color:#fff}
   #msg{margin-left:auto;color:var(--dim);font-variant-numeric:tabular-nums}
-  #out{padding:14px 0}
+  #out{padding:14px 0;flex:1;min-width:0}
+  /* 左側設定面板：sticky 而不是改 body 的排版，列印路徑（#out 的文件流）就不用動 */
+  #wrap{display:flex;align-items:flex-start;gap:0}
+  /* min-width:0 是必要的：flex item 預設 min-width:auto，內容的最小寬度會撐住它，收合時縮不掉 */
+  #side{flex:0 0 250px;width:250px;min-width:0;box-sizing:border-box;overflow-x:hidden;overflow-y:auto;
+        position:sticky;top:var(--ctlH);max-height:calc(100vh - var(--ctlH));
+        background:var(--bar);border-right:1px solid var(--line);padding:11px}
+  /* 收合直接覆寫實際數值——var 間接引用配上 transition 不會重算 flex-basis／padding */
+  body.sideOff #side{flex-basis:0;width:0;padding:0;border-right:0}
+  body.sideOff #side>*{display:none}
+  #side section{display:flex;flex-wrap:wrap;align-items:center;gap:6px;
+                padding:0 0 11px;margin:0 0 11px;border-bottom:1px solid var(--line)}
+  #side section:last-child{border-bottom:0;margin-bottom:0}
+  #side h3{flex:0 0 100%;margin:0;font-size:12px;font-weight:600;color:var(--ink);
+           display:flex;align-items:baseline;gap:6px}
+  /* 群標題右邊那行小字說的是這一組「動到什麼範圍」 */
+  #side h3 em{font-style:normal;font-size:11px;font-weight:400;color:var(--dim);opacity:.8}
+  /* 命名避開 .row —— 那是頁面上「資料列」的 class，本身是 position:absolute */
+  #side .srow{display:flex;flex-wrap:wrap;align-items:center;gap:6px;flex:0 0 100%}
+  #side label{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;color:var(--dim)}
+  #side input[type=checkbox],#side input[type=radio]{accent-color:var(--acc);margin:0}
+  #side input[type=number]{font:inherit;padding:2px 4px;border:1px solid var(--line);border-radius:5px;background:#fff;color:var(--ink)}
+  #side .lbl{flex:0 0 100%;color:var(--dim);font-size:11px;line-height:1.45}
+  #sideTog{margin-left:auto}
   /* 起始畫面：整頁拖曳區，載入成功後才收起（沿用 xls2spread 的做法） */
   #drop{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
         gap:18px;background:var(--bg);color:var(--ink);z-index:20;text-align:center;padding:24px}
@@ -81,7 +106,8 @@
   .fsel{outline:1px solid #ea4335!important;outline-offset:1px;background:#fce8e6cc}
   @media print{.fsel,body.free .seg,body.free .ln{outline:none!important;background:none}
                 body.free .ln{background:#000}}
-  body.free #ctl .tbl,body:not(.free) #freeG,body.free #fnAllLbl{display:none}
+  /* 選擇器要帶 #ctl／#side：#ctl label 與 #side section 都含 id，特異性比裸 .tbl 高 */
+  body.free #ctl .tbl,body.free #side .tbl,body:not(.free) #freeG,body.free #fnAllLbl{display:none}
   .gd{position:absolute;left:0;width:100%;border-top:1px dashed #ea4335;pointer-events:none}
   @media print{.gd{display:none}}
   .brk{display:flex;gap:8px;justify-content:center;align-items:center;color:var(--dim);font-size:12px;
@@ -97,7 +123,8 @@
   @media print{
     @page{margin:0}   /* 實際紙張尺寸由 load() 依來源 PDF 動態寫入 #pagesize */
     body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-    #ctl,.brk,#drop{display:none}
+    #ctl,#side,.brk,#drop{display:none}
+    #wrap{display:block}
     #out{zoom:1}                       /* 畫面縮放只是預覽，印出來一律原尺寸 */
     /* 這裡少一項就會每頁多吐一張空白紙：頁面盒剛好等於 A4，外圍任何留白都會溢位 */
     html,body,#out{width:auto;padding:0;margin:0;overflow:hidden}
@@ -109,83 +136,109 @@
 
 <style id="pagesize"></style>
 
+<!-- 版型依「操作範圍」分：上＝全域動作，左＝設定面板，中＝頁面預覽 -->
 <div id="ctl">
   <span class="g">
+    <span class="gt">檔案</span>
     <input type="file" id="f" accept="application/pdf,.json">
     <label class="tbl" title="跳過前面的封面／目次，從這一頁開始讀">起始頁<input type="number" id="fromPg" value="1" min="1" step="1" style="width:3.4em"></label>
     <label class="tbl"><input type="checkbox" id="spread"> 對開表</label>
     <label id="freeLbl" title="不分列不分頁，整份原樣攤開，只搬移／編輯文字方塊與線條"><input type="checkbox" id="freeMode"> 自由編輯</label>
   </span>
   <span class="g tbl">
-    <label title="表身上下留白，避免字壓到天地線">邊界 上<input type="number" id="padT" value="2" min="0" max="60" step="1" style="width:3.4em">
-      下<input type="number" id="padB" value="2" min="0" max="60" step="1" style="width:3.4em">pt</label>
-    <label title="表尾註第一列距地線多遠（只影響註，與上下邊界無關）">註起始<input type="number" id="noteY" value="0" min="-200" max="200" step="1" style="width:3.8em">pt</label>
-    <button id="reflowB" title="把表尾註整段接起來重新斷行（改完字之後用）；對開表會跨兩張紙接排">重排備註</button>
-    <label title="列高再怎麼壓縮都不低於這個值">最小列高<input type="number" id="minLh" value="0" min="0" max="60" step="0.5" style="width:3.8em">pt</label>
-    <label title="最後一頁列不滿時，尾端的合計／總計列沉到地線上方，中間留白"><input type="checkbox" id="sink"> 合計貼地線</label>
-    <label title="列高被拉開時，文字落在上下兩列的中間，而不是貼著自己那條基線"><input type="checkbox" id="vmid" checked> 文字置中</label>
-    <label title="畫出表身上下界（只在畫面上，不會印出來）"><input type="checkbox" id="guide" checked> 輔助線</label>
-    <label id="fnAllLbl" title="整份套用同一個字型，Windows／Mac 看到的結果就一致；「（原樣）」＝每個字保留原檔字型">整份字型<select id="fnAll"></select></label>
-  </span>
-  <span class="g tbl">
-    <button id="avgAll" title="所有頁面的列都平均分佈到表身底端">平均列高：全部頁面</button>
-    <button id="freeze" title="把目前每一個分頁點都鎖起來，之後不會被推拉動到">🔒 凍結分頁</button>
-    <button id="unfreeze" title="解開所有鎖定的分頁點（分頁位置不變）">🔓 清除鎖定</button>
-  </span>
-  <span class="g tbl">
-    <button id="bu" onclick="undo()" title="復原">↩</button>
-    <button id="br" onclick="redo()" title="重做">↪</button>
-    <button onclick="group()" title="把選取的連續列綁成一組，分頁不會拆開">組成群組</button>
-    <button onclick="ungroup()" title="解除選取列的群組">解除群組</button>
-    <button onclick="sel.clear();render()" title="取消目前的列選取">取消選取</button>
-  </span>
-  <span class="g" id="alignG" title="表格模式：按住修飾鍵點格子選取；自由編輯：直接選文字方塊。再按對齊鈕">
-    <span class="lbl">對齊 <span class="tbl"><b id="kAlt">Alt</b>＋點</span></span>
-    <button onclick="align('l')" title="靠左對齊">⇤</button>
-    <button onclick="align('c')" title="水平置中">⇔</button>
-    <button onclick="align('r')" title="靠右對齊">⇥</button>
-    <button onclick="align('d')" title="水平均分">⇹</button>
-    <button onclick="align('col')" title="依欄線置中">⊞</button>
-  </span>
-  <span class="g" id="freeG">
-    <span class="lbl">選取對象</span>
-    <label><input type="radio" name="cat" value="t" checked> 文字方塊</label>
-    <label><input type="radio" name="cat" value="l"> 線條</label>
-    <label id="fnEd" title="選到文字方塊才能改">字型<select id="fontSel"></select></label>
-    <label id="lnEd" title="選到線條才能改">線 長<input type="number" id="lnLen" step="0.5" style="width:4.8em">
-      粗<input type="number" id="lnTh" step="0.25" min="0.25" style="width:4em">pt</label>
-    <button onclick="alignLine(0)" title="選取的線拉到同一個起點（左端／上端），另一端不動">齊頭</button>
-    <button onclick="alignLine(1)" title="選取的線拉到同一個終點（右端／下端），另一端不動">齊尾</button>
-    <button id="delObj" title="刪除選取物件（Delete）">刪除</button>
-    <button onclick="fundoF()" id="fbu" title="復原">↩</button>
-    <button onclick="fredoF()" id="fbr" title="重做">↪</button>
-    <button onclick="saveFree()" title="把目前的自由編輯結果存成 .json，之後拖回來就能接著改（不需要原始 PDF）">存檔</button>
-    <span class="lbl">拖曳搬移・線兩端可拉長度・雙擊改字・方向鍵微調（Shift 大步）</span>
+    <button id="bu" onclick="undo()" title="復原 (⌘Z)">↩ 復原</button>
+    <button id="br" onclick="redo()" title="重做 (⇧⌘Z)">↪ 重做</button>
   </span>
   <span class="g">
-    <input id="fq" placeholder="搜尋文字" style="font:inherit;padding:2px 6px;border:1px solid var(--line);border-radius:5px;width:9em">
-    <button onclick="step(-1)" title="上一個 (Shift+Enter)">‹</button>
-    <button onclick="step(1)" title="下一個 (Enter)">›</button>
-    <span class="lbl" id="fmsg"></span>
-  </span>
-  <span class="g">
-    <button id="chkB" onclick="chk()" title="標出被線壓到的字，以及原檔是白字／極淡字（印出來不會有標記）">檢查</button>
-    <label title="字框先往內縮這麼多才判定壓線；調大只留下壓得深的">容許<input type="number" id="ovTol" value="0.5" min="0" max="6" step="0.25" style="width:3.6em">pt</label>
-    <label title="原檔填色亮度 ≥ 此值就算白字（255＝純白）；調低會連淺灰字一起抓">白字門檻<input type="number" id="whThr" value="230" min="128" max="255" step="5" style="width:4em"></label>
-    <span class="lbl" id="cmsg"></span>
-  </span>
-  <span class="g">
+    <span class="gt">檢視</span>
     <button onclick="fit('w')" title="縮放到符合頁寬（對開表算左右兩頁的總寬）">符合頁寬</button>
     <button onclick="fit('h')" title="縮放到一頁的高度剛好塞進視窗">符合頁高</button>
     <button onclick="fit(0)" title="回到原尺寸">100%</button>
   </span>
   <span class="g">
-    <label id="edLbl" class="tbl" title="點格子直接改字"><input type="checkbox" id="editMode"> 編輯文字</label>
     <button class="pri" onclick="doPrint()">列印 / 存成 PDF</button>
   </span>
   <span id="msg"></span>
+  <button id="sideTog" title="收合／展開左側設定面板">◀ 設定</button>
 </div>
-<div id="out"></div>
+
+<div id="wrap">
+  <aside id="side">
+    <section class="tbl">
+      <h3>版面<em>整份套用</em></h3>
+      <label title="表身上下留白，避免字壓到天地線">邊界 上<input type="number" id="padT" value="2" min="0" max="60" step="1" style="width:3.4em">
+        下<input type="number" id="padB" value="2" min="0" max="60" step="1" style="width:3.4em">pt</label>
+      <label title="列高再怎麼壓縮都不低於這個值">最小列高<input type="number" id="minLh" value="0" min="0" max="60" step="0.5" style="width:3.8em">pt</label>
+      <label title="列高被拉開時，文字落在上下兩列的中間，而不是貼著自己那條基線"><input type="checkbox" id="vmid" checked> 文字置中</label>
+      <label title="最後一頁列不滿時，尾端的合計／總計列沉到地線上方，中間留白"><input type="checkbox" id="sink"> 合計貼地線</label>
+      <label id="fnAllLbl" title="整份套用同一個字型，Windows／Mac 看到的結果就一致；「（原樣）」＝每個字保留原檔字型">整份字型<select id="fnAll"></select></label>
+    </section>
+    <section class="tbl">
+      <h3>分頁<em>整份套用</em></h3>
+      <button id="avgAll" title="所有頁面的列都平均分佈到表身底端">平均列高：全部頁面</button>
+      <button id="freeze" title="把目前每一個分頁點都鎖起來，之後不會被推拉動到">🔒 凍結分頁</button>
+      <button id="unfreeze" title="解開所有鎖定的分頁點（分頁位置不變）">🔓 清除鎖定</button>
+    </section>
+    <section class="tbl" id="noteG">
+      <h3>表尾註<em>整份套用</em></h3>
+      <label title="表尾註第一列距地線多遠（只影響註，與上下邊界無關）">註起始<input type="number" id="noteY" value="0" min="-200" max="200" step="1" style="width:3.8em">pt</label>
+      <button id="reflowB" title="把表尾註整段接起來重新斷行（改完字之後用）；對開表會跨兩張紙接排">重排備註</button>
+    </section>
+    <section class="tbl">
+      <h3>選取的列<em>先在頁面上點選</em></h3>
+      <button onclick="group()" title="把選取的連續列綁成一組，分頁不會拆開">組成群組</button>
+      <button onclick="ungroup()" title="解除選取列的群組">解除群組</button>
+      <button onclick="sel.clear();render()" title="取消目前的列選取">取消選取</button>
+      <label id="edLbl" title="點格子直接改字"><input type="checkbox" id="editMode"> 編輯文字</label>
+    </section>
+    <section id="alignG" title="表格模式：按住修飾鍵點格子選取；自由編輯：直接選文字方塊。再按對齊鈕">
+      <h3>對齊<em class="tbl"><b id="kAlt">Alt</b>＋點選格子</em></h3>
+      <span class="srow">
+        <button onclick="align('l')" title="靠左對齊">⇤</button>
+        <button onclick="align('c')" title="水平置中">⇔</button>
+        <button onclick="align('r')" title="靠右對齊">⇥</button>
+        <button onclick="align('d')" title="水平均分">⇹</button>
+        <button onclick="align('col')" title="依欄線置中">⊞</button>
+      </span>
+    </section>
+    <section id="freeG">
+      <h3>自由編輯<em>選取的物件</em></h3>
+      <span class="srow">
+        <label><input type="radio" name="cat" value="t" checked> 文字方塊</label>
+        <label><input type="radio" name="cat" value="l"> 線條</label>
+      </span>
+      <label id="fnEd" title="選到文字方塊才能改">字型<select id="fontSel"></select></label>
+      <label id="lnEd" title="選到線條才能改">線 長<input type="number" id="lnLen" step="0.5" style="width:4.8em">
+        粗<input type="number" id="lnTh" step="0.25" min="0.25" style="width:4em">pt</label>
+      <span class="srow">
+        <button onclick="alignLine(0)" title="選取的線拉到同一個起點（左端／上端），另一端不動">齊頭</button>
+        <button onclick="alignLine(1)" title="選取的線拉到同一個終點（右端／下端），另一端不動">齊尾</button>
+        <button id="delObj" title="刪除選取物件（Delete）">刪除</button>
+      </span>
+      <span class="srow">
+        <button onclick="fundoF()" id="fbu" title="復原">↩</button>
+        <button onclick="fredoF()" id="fbr" title="重做">↪</button>
+        <button onclick="saveFree()" title="把目前的自由編輯結果存成 .json，之後拖回來就能接著改（不需要原始 PDF）">存檔</button>
+      </span>
+      <span class="lbl">拖曳搬移・線兩端可拉長度・雙擊改字・方向鍵微調（Shift 大步）</span>
+    </section>
+    <section>
+      <h3>畫面<em>不會印出來</em></h3>
+      <label class="tbl" title="畫出表身上下界（只在畫面上，不會印出來）"><input type="checkbox" id="guide" checked> 輔助線</label>
+      <span class="srow">
+        <input id="fq" placeholder="搜尋文字" style="font:inherit;padding:2px 6px;border:1px solid var(--line);border-radius:5px;flex:1;min-width:0">
+        <button onclick="step(-1)" title="上一個 (Shift+Enter)">‹</button>
+        <button onclick="step(1)" title="下一個 (Enter)">›</button>
+      </span>
+      <span class="lbl" id="fmsg"></span>
+      <button id="chkB" onclick="chk()" title="標出被線壓到的字，以及原檔是白字／極淡字（印出來不會有標記）">檢查</button>
+      <label title="字框先往內縮這麼多才判定壓線；調大只留下壓得深的">容許<input type="number" id="ovTol" value="0.5" min="0" max="6" step="0.25" style="width:3.6em">pt</label>
+      <label title="原檔填色亮度 ≥ 此值就算白字（255＝純白）；調低會連淺灰字一起抓">白字門檻<input type="number" id="whThr" value="230" min="128" max="255" step="5" style="width:4em"></label>
+      <span class="lbl" id="cmsg"></span>
+    </section>
+  </aside>
+  <div id="out"></div>
+</div>
 
 <div id="drop">
   <div id="zone">
@@ -269,6 +322,9 @@ editMode.onchange = () => { document.body.classList.toggle('edit', editMode.chec
 async function load(){
   const doc = await U.getDocument(await buf.arrayBuffer()).promise;
   srcFonts.clear(); fontWarned=false; paleV=[];
+  // body.free 決定側欄顯示哪一組。原本只在 freeMode.onchange 設定，瀏覽器重新整理後
+  // 還原勾選狀態不會觸發 change，會排出自由編輯版面卻套著表格模式的側欄。
+  document.body.classList.toggle('free', freeMode.checked);
   if(freeMode.checked) return loadFree(doc);
   // 對開：奇數頁是左半、偶數頁是右半，兩頁併成一個「版」（右半的 x 平移一個頁寬）
   const N = spread.checked ? 2 : 1;
@@ -356,7 +412,7 @@ async function load(){
   const tail = note[note.length-1] || [];
   // 註起始預設沿用原檔（表尾註的第一列距地線多遠；騎在線上時是負的）
   NOTEY = tail.length ? +(Math.min(...tail.map(r=>r.y))-bottomY).toFixed(1) : 0;
-  noteY.value = NOTEY; noteY.parentElement.style.display = reflowB.style.display = tail.length?'':'none';
+  noteY.value = NOTEY; noteG.style.display = tail.length?'':'none';
 
   rows=[]; units=[]; breaks=[]; sel.clear(); undoS=[]; redoS=[]; selSeg.clear();
   avgPg.clear(); locks.clear(); minLH=0; dragI=lastI=null;
@@ -1016,7 +1072,13 @@ function fit(m){
   setZoom(avail/(m==='w'?w:pgs[0].offsetHeight));
 }
 const setZoom=z=>{ zm=Math.max(.1,Math.min(4,z)); out.style.zoom=zm===1?'':zm; };
-addEventListener('resize',()=>fitMode&&fit(fitMode));
+// 側欄用 sticky 貼在工具列下方，工具列換行時高度會變，量到 --ctlH 給 CSS 用
+const syncCtlH=()=>document.documentElement.style.setProperty('--ctlH', ctl.offsetHeight+'px');
+addEventListener('resize',()=>{ syncCtlH(); fitMode&&fit(fitMode); });
+syncCtlH();
+sideTog.onclick=()=>{ document.body.classList.toggle('sideOff');
+  sideTog.textContent=document.body.classList.contains('sideOff')?'▶ 設定':'◀ 設定';
+  fitMode&&fit(fitMode); };
 
 // ── 檢查：被線壓到的字、原檔的白字／極淡字 ────────────────────────
 // 白字要從 operator list 拿：getTextContent 不帶顏色，而 pdf.js 會把各種顏色空間
