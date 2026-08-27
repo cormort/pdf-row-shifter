@@ -4,45 +4,54 @@
 <style>
   /* 介面配色 token：亮色是預設，body.dark 整組換掉。
      頁面本身（.page 及上面的字、線、標記）一律白底黑字，那是紙，不受主題影響。 */
-  :root{--bg:#e9eaee;--bar:#fbfbfd;--line:#d6d8de;--ink:#22252b;--dim:#6b7280;--acc:#4285f4;
-        --fld:#fff;          /* 輸入框／按鈕底 */
-        --btn-h:#f5f9ff;--btn-a:#e8f0fe;   /* 按鈕 hover／active */
-        --zone-on:#eaf1fe;--bad:#c0392b;--undo-bd:#b9cdf5;
-        --brk-bg:#ffffffb3;  /* 頁與頁之間那條分頁列，浮在版面底上 */
-        --pri:#4285f4;--pri-h:#3b78e7;   /* 列印鈕：跟 --acc 分開，深色時 --acc 要夠亮才看得見，
-                                            但淺藍配白字的對比只有 2.2:1，主行動鈕得用深一點的藍 */
+  :root{--bg:#f4f4f5;--bar:#fff;--line:#e4e4e7;--ink:#11181c;--dim:#71717a;--acc:#006fee;
+        --fld:#f4f4f5;                    /* HeroUI 的輸入框是填色不是描邊 */
+        --btn:#f4f4f5;--btn-h:#e4e4e7;--btn-a:#d4d4d8;
+        --zone-on:#e6f1fe;--bad:#f31260;
+        --brk-bg:#fffffff2;  /* 頁與頁之間那條分頁列，浮在版面底上 */
+        --pri:#006fee;--pri-h:#005bc4;    /* 列印鈕：實心主色，深色時也是同一支 */
+        --warn:#f5a524;
+        --r:12px;--r-sm:8px;--r-lg:14px;
+        --sh:0 0 5px #00000005,0 2px 10px #0000000f;
         --ctlH:44px}
-  body.dark{--bg:#31343a;--bar:#232529;--line:#3d4149;--ink:#e6e8ec;--dim:#9aa1ad;--acc:#7db0ff;
-        --fld:#2b2e34;--btn-h:#2f3945;--btn-a:#36424f;
-        --zone-on:#2c3a4d;--bad:#ff8a80;--undo-bd:#3a5480;--brk-bg:#232529d9;
-        --pri:#2f62c4;--pri-h:#3b74dd}
+  body.dark{--bg:#000;--bar:#18181b;--line:#27272a;--ink:#ecedee;--dim:#a1a1aa;--acc:#338ef7;
+        --fld:#27272a;--btn:#27272a;--btn-h:#3f3f46;--btn-a:#52525b;
+        --zone-on:#001731;--bad:#ff4d7d;--brk-bg:#18181bf2;
+        --pri:#006fee;--pri-h:#338ef7;
+        --sh:0 0 5px #0000000d,0 2px 10px #00000040}
   body{font:13px/1.5 -apple-system,"Segoe UI","PingFang TC","Microsoft JhengHei",sans-serif;margin:0;background:var(--bg);color:var(--ink)}
-  #ctl{position:sticky;top:0;background:var(--bar);padding:7px 12px;z-index:10;border-bottom:1px solid var(--line);
-       box-shadow:0 1px 6px #0000001a;display:flex;flex-wrap:wrap;align-items:center;gap:5px}
+  #ctl{position:sticky;top:0;background:var(--bar);padding:8px 14px;z-index:10;border-bottom:1px solid var(--line);
+       box-shadow:var(--sh);display:flex;flex-wrap:wrap;align-items:center;gap:6px}
   /* 工具列分組：同一組貼在一起，組與組之間留白＋細分隔線 */
-  #ctl .g{display:flex;align-items:center;gap:4px;padding-right:5px;margin-right:5px;border-right:1px solid var(--line)}
+  #ctl .g{display:flex;align-items:center;gap:6px;padding-right:8px;margin-right:4px;border-right:1px solid var(--line)}
   #ctl .g:last-of-type{border:0}
   #ctl label{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;color:var(--dim)}
   #ctl input[type=checkbox]{accent-color:var(--acc);margin:0}
   #ctl input[type=number],#side input[type=number],#ctl input[type=text],#side input[type=text]{
-       font:inherit;padding:2px 4px;border:1px solid var(--line);border-radius:5px;background:var(--fld);color:var(--ink)}
+       font:inherit;padding:4px 8px;border:0;border-radius:var(--r-sm);background:var(--fld);color:var(--ink);
+       transition:background .15s}
+  #ctl input:hover,#side input:hover,#ctl select:hover,#side select:hover{background:var(--btn-h)}
+  #ctl input:focus-visible,#side input:focus-visible,#ctl select:focus-visible,#side select:focus-visible,
+  button:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
   #ctl input[type=file]{max-width:190px;font-size:12px;color:var(--dim)}
-  #ctl input[type=file]::file-selector-button{font:inherit;padding:3px 9px;margin-right:6px;border:1px solid var(--line);
-       border-radius:6px;background:var(--fld);color:var(--ink);cursor:pointer}
-  #ctl input[type=file]::file-selector-button:hover{border-color:var(--acc);color:var(--acc)}
+  #ctl input[type=file]::file-selector-button{font:inherit;font-weight:500;padding:5px 12px;margin-right:8px;border:0;
+       border-radius:var(--r);background:var(--btn);color:var(--ink);cursor:pointer;transition:background .15s}
+  #ctl input[type=file]::file-selector-button:hover{background:var(--btn-h)}
   #ctl .lbl{color:var(--dim)}
-  #ctl select,#side select{font:inherit;padding:2px 4px;border:1px solid var(--line);border-radius:5px;background:var(--fld);color:var(--ink);max-width:100%}
+  #ctl select,#side select{font:inherit;padding:4px 8px;border:0;border-radius:var(--r-sm);background:var(--fld);color:var(--ink);
+       max-width:100%;transition:background .15s}
   /* 群標題：說明這一組的「操作範圍」，小而淡，不搶控制項 */
   #ctl .gt{font-size:11px;color:var(--dim);opacity:.75;white-space:nowrap;margin-right:2px}
   #ctl .lbl b{font-weight:600;color:var(--ink)}
   /* 編輯文字是「模式」不是選項，開著時整個 label 變橘底，免得使用者忘了自己還在編輯模式 */
   /* 編輯文字一律上橘底，讓它在工具列裡一眼找得到（不是狀態指示） */
-  #edLbl{padding:2px 7px;border-radius:6px;background:#fbbc04;color:#22252b;font-weight:600}
-  #edLbl input{accent-color:#22252b}
+  /* 要帶 #side：#side label 的特異性比裸 #edLbl 高，不然字色會被 --dim 蓋掉，變灰字壓橘底 */
+  #side #edLbl,#ctl #edLbl{padding:4px 10px;border-radius:999px;background:var(--warn);color:#11181c;font-weight:600}
+  #edLbl input{accent-color:#11181c}
   /* 復原／重做：能按時才上色，灰掉就是沒東西可還原 */
-  #bu:not(:disabled),#br:not(:disabled){color:var(--acc);border-color:var(--undo-bd);font-weight:700}
-  #ctl .pri{background:var(--pri);border-color:var(--pri);color:#fff}
-  #ctl .pri:hover{background:var(--pri-h);border-color:var(--pri-h);color:#fff}
+  #bu:not(:disabled),#br:not(:disabled){color:var(--acc);font-weight:600}
+  #ctl .pri{background:var(--pri);color:#fff;font-weight:600;box-shadow:var(--sh)}
+  #ctl .pri:hover:not(:disabled){background:var(--pri-h);color:#fff}
   #msg{margin-left:auto;color:var(--dim);font-variant-numeric:tabular-nums}
   #out{padding:14px 0;flex:1;min-width:0}
   /* 左側設定面板：sticky 而不是改 body 的排版，列印路徑（#out 的文件流）就不用動 */
@@ -50,14 +59,14 @@
   /* min-width:0 是必要的：flex item 預設 min-width:auto，內容的最小寬度會撐住它，收合時縮不掉 */
   #side{flex:0 0 250px;width:250px;min-width:0;box-sizing:border-box;overflow-x:hidden;overflow-y:auto;
         position:sticky;top:var(--ctlH);max-height:calc(100vh - var(--ctlH));
-        background:var(--bar);border-right:1px solid var(--line);padding:11px}
+        background:var(--bar);border-right:1px solid var(--line);padding:14px}
   /* 收合直接覆寫實際數值——var 間接引用配上 transition 不會重算 flex-basis／padding */
   body.sideOff #side{flex-basis:0;width:0;padding:0;border-right:0}
   body.sideOff #side>*{display:none}
-  #side section{display:flex;flex-wrap:wrap;align-items:center;gap:6px;
-                padding:0 0 11px;margin:0 0 11px;border-bottom:1px solid var(--line)}
+  #side section{display:flex;flex-wrap:wrap;align-items:center;gap:8px;
+                padding:0 0 14px;margin:0 0 14px;border-bottom:1px solid var(--line)}
   #side section:last-child{border-bottom:0;margin-bottom:0}
-  #side h3{flex:0 0 100%;margin:0;font-size:12px;font-weight:600;color:var(--ink);
+  #side h3{flex:0 0 100%;margin:0;font-size:12px;font-weight:600;letter-spacing:.02em;color:var(--ink);
            display:flex;align-items:baseline;gap:6px}
   /* 群標題右邊那行小字說的是這一組「動到什麼範圍」 */
   #side h3 em{font-style:normal;font-size:11px;font-weight:400;color:var(--dim);opacity:.8}
@@ -72,9 +81,10 @@
   #drop{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
         gap:18px;background:var(--bg);color:var(--ink);z-index:20;text-align:center;padding:24px}
   #drop.hide{display:none}
-  #zone{border:3px dashed var(--line);border-radius:14px;padding:56px 72px;transition:.15s;cursor:pointer;max-width:640px;background:var(--bar)}
+  #zone{border:2px dashed var(--line);border-radius:var(--r-lg);padding:56px 72px;transition:.15s;cursor:pointer;max-width:640px;
+        background:var(--bar);box-shadow:var(--sh)}
   #zone.on{border-color:var(--acc);background:var(--zone-on)}
-  #zone h1{margin:0 0 10px;font-size:21px;font-weight:600}
+  #zone h1{margin:0 0 10px;font-size:22px;font-weight:600;letter-spacing:-.01em}
   #zone p{margin:6px 0;font-size:13px;color:var(--dim);line-height:1.7}
   #zone b{color:var(--ink)}
   #err{color:var(--dim);font-size:13px;white-space:pre-wrap;min-height:18px}
@@ -83,7 +93,7 @@
   /* contain:paint 是必要的：對開時內層有兩頁寬，只用 overflow:hidden 列印仍會被算進版面寬度，
      Chrome 就會把整份文件縮小以「符合寬度」，印出來變一半大小 */
   /* 頁面內文字要純黑，不能吃 body 的 --ink 深灰，否則轉出的 PDF 比原檔淺 */
-  .page{background:#fff;color:#000;box-shadow:0 2px 10px #00000024;position:relative;overflow:hidden;contain:paint;flex:none}
+  .page{background:#fff;color:#000;box-shadow:0 0 5px #0000000a,0 4px 14px #00000026;position:relative;overflow:hidden;contain:paint;flex:none}
   /* safe center：視窗塞不下（對開時常見）就改成靠左，否則置中會把左半頁推到 x<0，
      那塊捲不回來也看不到。溢出的右側交給整頁的橫向捲軸 */
   .sheet{display:flex;gap:4px;justify-content:safe center;margin-bottom:10px;width:fit-content;min-width:100%}
@@ -126,15 +136,16 @@
   .gd{position:absolute;left:0;width:100%;border-top:1px dashed #ea4335;pointer-events:none}
   @media print{.gd{display:none}}
   .brk{display:flex;gap:8px;justify-content:center;align-items:center;color:var(--dim);font-size:12px;
-       margin:0 auto 14px;padding:5px 12px;width:fit-content;background:var(--brk-bg);border:1px solid var(--line);border-radius:99px}
+       margin:0 auto 14px;padding:6px 14px;width:fit-content;background:var(--brk-bg);border:1px solid var(--line);
+       border-radius:999px;box-shadow:var(--sh);backdrop-filter:blur(8px)}
   .brk b{color:var(--ink);font-weight:600}
   .brk label{display:inline-flex;align-items:center;gap:4px}
   .brk input[type=checkbox]{accent-color:var(--acc);margin:0}
-  button{font:inherit;padding:3px 9px;border:1px solid var(--line);border-radius:6px;background:var(--fld);color:var(--ink);
-         cursor:pointer;transition:border-color .12s,color .12s,background .12s}
-  button:hover:not(:disabled){border-color:var(--acc);color:var(--acc);background:var(--btn-h)}
-  button:active:not(:disabled){background:var(--btn-a)}
-  button:disabled{opacity:.4;cursor:default}
+  button{font:inherit;font-weight:500;padding:5px 12px;border:0;border-radius:var(--r);background:var(--btn);color:var(--ink);
+         cursor:pointer;transition:background .15s,transform .1s,opacity .15s}
+  button:hover:not(:disabled){background:var(--btn-h)}
+  button:active:not(:disabled){background:var(--btn-a);transform:scale(.97)}
+  button:disabled{opacity:.5;cursor:default}
   @media print{
     @page{margin:0}   /* 實際紙張尺寸由 load() 依來源 PDF 動態寫入 #pagesize */
     body{background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
