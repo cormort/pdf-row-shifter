@@ -81,6 +81,8 @@
   #drop{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
         gap:18px;background:var(--bg);color:var(--ink);z-index:20;text-align:center;padding:24px}
   #drop.hide{display:none}
+  /* 首頁底色就是 --btn，按鈕得靠面板底色＋描邊才看得出來 */
+  #blang2{position:absolute;top:16px;right:16px;background:var(--bar);border:1px solid var(--line);box-shadow:var(--sh)}
   #zone{border:2px dashed var(--line);border-radius:var(--r-lg);padding:56px 72px;transition:.15s;cursor:pointer;max-width:640px;
         background:var(--bar);box-shadow:var(--sh)}
   #zone.on{border-color:var(--acc);background:var(--zone-on)}
@@ -269,6 +271,7 @@
 </div>
 
 <div id="drop">
+  <button id="blang2" class="dyn" title="Switch interface language / 切換介面語言">EN</button>
   <div id="zone">
     <h1>把 PDF 拖進來</h1>
     <p>或<b>點這裡選檔案</b></p>
@@ -309,7 +312,7 @@ function applyLang(){
       }
     });
   }
-  blang.textContent = LANG==='en' ? '中文' : 'EN';
+  blang.textContent = blang2.textContent = LANG==='en' ? '中文' : 'EN';
 }
 
 const U=pdfjsLib; U.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -328,7 +331,8 @@ function dynLabels(){
   fillFonts();
   units.length ? render() : status();
 }
-blang.onclick=()=>{ LANG=LANG==='en'?'zh':'en';
+blang.onclick=blang2.onclick=ev=>{ ev.stopPropagation();   // 首頁那顆在拖曳區裡，點它不要順便開檔案對話框
+  LANG=LANG==='en'?'zh':'en';
   try{ localStorage.setItem(LANG_KEY,LANG); }catch(e){}
   applyLang(); dynLabels(); };
 
