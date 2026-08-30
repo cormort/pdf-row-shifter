@@ -140,6 +140,14 @@ The heuristic became content-anchored: on a given page, a line starting with 註
 a footnote block that runs to the foot of the page. Across all 13 files such a line is always that
 page's last block with no data rows after it, so no data is swallowed.
 
+For English documents the anchors are `Note:`, `Notes:` and `Source:` (optionally preceded by `*`),
+and the **colon or full stop is required**: `Notes payable to …` is a genuine data row in plenty of
+financial tables, and without that constraint everything from it down would be swallowed as a note.
+The Chinese 註 is rare enough as a row opener that it needs no such guard. Measured on a synthetic
+English Letter table: a `Note:` straddling the bottom rule moves from the data rows (47 rows / 2 note
+lines) into the notes (46 rows / 3 note lines), while `Notes payable to related parties` on the same
+page stays a data row.
+
 **Why not a global y band**: the notes' y positions look fixed, but the note bands of
 `OF-06-固資成本效益` (notes start at 712.8) and `OF-07-長債` (690) contain hundreds
 of genuine data rows, and a global cut would delete them too. The anchor has to be judged per page.
@@ -268,7 +276,8 @@ blocked with a message.
 - When one file holds several tables with different columns (e.g. `綜計-OF-01` contains 4), rules
   are drawn per page, but **rows cannot be pushed across tables** — text x positions do not follow the
   new table, so a pushed row lands in the wrong columns. Split out a single table first.
-- Outside spread mode, a footnote continuation landing on the half without the word 註 (e.g. the right
+- Outside spread mode, a footnote continuation landing on the half without the anchor word (註 /
+  `Note:`) (e.g. the right
   half of `OF-05-固資來源`) stays among the data rows. Spread mode does not have this
   problem — the halves merge by y, so the continuation and "註：" are on the same row.
 

@@ -375,7 +375,8 @@ addEventListener('drop', e=>e.preventDefault());
 // 起始頁跟對開一樣要重讀原檔，改動同樣會被清掉
 fromPg.onchange = () => { if(buf) queueLoad(); };
 spread.onchange = () => {
-  if(undoS.length && !confirm('切換對開表會重新載入原檔，目前的推拉／群組／鎖定／改字都會清掉。要繼續嗎？'))
+  if(undoS.length && !confirm(T('切換對開表會重新載入原檔，目前的推拉／群組／鎖定／改字都會清掉。要繼續嗎？',
+      'Switching spread mode reloads the source file — the pushes, groups, locks and text edits you have made will be discarded. Continue?')))
     return spread.checked=!spread.checked;
   buf && queueLoad();
 };
@@ -470,7 +471,10 @@ async function load(){
   // 對開表用單頁模式開時，右半頁的註是左半註的續行（不以「註」開頭）——沿用前一頁的
   // 註起始並放寬 8pt（左右半的註高度略有出入），且要含中文字（右半的合計列是數字、
   // 註是文字），避免把合計列收進註。
-  const nfOwn = all.map(pg=>Math.min(...pg.filter(r=>r.y>H*.6 && /^\s*(註|附註|說明)/.test(r[0].t))
+  // 英文文件的錨點要跟冒號／句點（Note:、Notes.、* Source:），不然財報常見的
+  // 「Notes payable」這種資料列會被整段當成註吃掉；中文的「註」開頭本來就夠罕見。
+  const NOTE_RE = /^\s*(註|附註|說明|\*\s*(Notes?|Sources?)\b|(Notes?|Sources?)\s*[:：.])/i;
+  const nfOwn = all.map(pg=>Math.min(...pg.filter(r=>r.y>H*.6 && NOTE_RE.test(r[0].t))
                                           .map(r=>r.y), Infinity));
   const nfEff = [];
   for(let i=0;i<all.length;i++)
@@ -479,7 +483,7 @@ async function load(){
       : (i>0 && nfEff[i-1] && nfEff[i-1].v<Infinity) ? {v:nfEff[i-1].v, carr:true}
       : {v:Infinity, carr:false};
   const isNote = (r,nf,bot) => !noFrame && !isPgNo(r) && (r.y>bot
-      || (r.y>=nf.v && (!nf.carr || /[\u4e00-\u9fff]/.test(r.map(s=>s.t).join('')))));
+      || (r.y>=nf.v && (!nf.carr || /[\u4e00-\u9fff\p{L}]{2}/u.test(r.map(s=>s.t).join('')))));
   // 註留在它原本那一頁。對開表用單頁模式開時，左右半頁的註是同幾句話的左右兩半、內容不同，
   // 全部收成一份畫在末頁就會疊成一團（用人費用、固資來源、固資成本效益、OF-08-基金 都會）。
   // 原檔末頁那份才是表尾註，跟著表格結尾走；其餘各頁的原位不動，該頁的列也不會排到它上面。
@@ -1459,30 +1463,45 @@ const CJK=['微軟正黑體','Microsoft JhengHei','PingFang TC','Heiti TC'];
 function doPrint(){
   if(fontWarned) return print();
   const have=CJK.find(hasFont);
+  const hasCJK=rows.concat(head.flat(),note.flat()).flat().some(t=>/[\u4e00-\u9fff]/.test(t.t||''));
   const list=[...srcFonts].sort();
-  const msg='輸出的 PDF 不會沿用原檔的內嵌字型，是用本機字型重新排版的：\n\n'
+  // 純拉丁文件（原檔沒有中文字）不必講中文字型那一行
+  const msg=T('輸出的 PDF 不會沿用原檔的內嵌字型，是用本機字型重新排版的：\n\n',
+              'The exported PDF does not keep the source\u2019s embedded fonts — it is re-set with fonts installed on this machine:\n\n')
     + (fontAll
-        ? `　整份字型　　${fontAll}${hasFont(fontAll)?'':'　⚠本機沒有，會用系統字型替代'}\n`
-        : `　中文　　　${have||'（本機沒有正黑體，會用系統預設中文字型）'}\n　數字／英文　Times New Roman\n`)
-    + (list.length ? `　原檔字型　　${list.slice(0,6).join('、')}${list.length>6?` 等 ${list.length} 種`:''}\n\n`:'')
-    + '每段字寬都壓回了原檔寬度，版面不會跑掉，但字形細節與原檔不同。要繼續嗎？';
+        ? T(`　整份字型　　${fontAll}${hasFont(fontAll)?'':'　⚠本機沒有，會用系統字型替代'}\n`,
+            `　Document font　${fontLabel(fontAll)}${hasFont(fontAll)?'':'　⚠ not installed, a system font will stand in'}\n`)
+        : (hasCJK
+            ? T(`　中文　　　${have||'（本機沒有正黑體，會用系統預設中文字型）'}\n　數字／英文　Times New Roman\n`,
+                `　Chinese　　${have?fontLabel(have):'(no gothic face here; the system default will be used)'}\n　Latin / digits　Times New Roman\n`)
+            : T('　字型　　　Times New Roman／Arial\n','　Fonts　　Times New Roman / Arial\n')))
+    + (list.length ? T(`　原檔字型　　${list.slice(0,6).join('、')}${list.length>6?` 等 ${list.length} 種`:''}\n\n`,
+                       `　Source fonts　${list.slice(0,6).join(', ')}${list.length>6?` and ${list.length-6} more`:''}\n\n`):'')
+    + T('每段字寬都壓回了原檔寬度，版面不會跑掉，但字形細節與原檔不同。要繼續嗎？',
+        'Every run is scaled back to its source width, so the layout holds; only the letterforms differ. Continue?');
   if(!confirm(msg)) return;
   fontWarned=true; print();
 }
 
 // ── 換字型：只給常見的那幾套，選單一律列出來，本機沒裝的標 ⚠（在別台機器印還是對的） ──
 // 字型堆疊一律用單引號：它會被塞進 style="…" 屬性裡，雙引號會把屬性提前結束掉
-const FONTS=[['微軟正黑體',"'微軟正黑體','Microsoft JhengHei',sans-serif"],
-             ['標楷體',"'標楷體','DFKai-SB','BiauKai',serif"],
-             ['新細明體',"'新細明體','PMingLiU','MingLiU',serif"],
+// [key, 字型堆疊, 英文選單標籤]。key 會寫進自由編輯的 .json，不能改。
+const FONTS=[['微軟正黑體',"'微軟正黑體','Microsoft JhengHei',sans-serif",'Microsoft JhengHei'],
+             ['標楷體',"'標楷體','DFKai-SB','BiauKai',serif",'DFKai-SB (Kai)'],
+             ['新細明體',"'新細明體','PMingLiU','MingLiU',serif",'PMingLiU (Ming)'],
              ['Times New Roman',"'Times New Roman',Times,serif"],
-             ['Arial',"Arial,Helvetica,sans-serif"]];
+             ['Georgia',"Georgia,'Times New Roman',serif"],
+             ['Arial',"Arial,Helvetica,sans-serif"],
+             ['Helvetica',"Helvetica,Arial,sans-serif"],
+             ['Calibri',"Calibri,'Segoe UI',sans-serif"],
+             ['Courier New',"'Courier New',Courier,monospace"]];
 const famOf = n => (FONTS.find(f=>f[0]===n)||[])[1];
+const fontLabel = n => { const f=FONTS.find(f=>f[0]===n); return LANG==='en'&&f&&f[2] ? f[2] : n; };
 // 整份字型：一般模式套用到全部文字（rows／head／note 都換），進自由編輯時寫成 f 一起存檔
 // 換語言時整份重建，選到的值自己存回去
 function fillFonts(){
   const opts=`<option value="">${T('（原樣）','(as-is)')}</option>`
-    + FONTS.map(([n])=>`<option value="${n}">${n}${hasFont(n)?'':T(' ⚠本機無',' ⚠ not installed')}</option>`).join('');
+    + FONTS.map(([n])=>`<option value="${n}">${fontLabel(n)}${hasFont(n)?'':T(' ⚠本機無',' ⚠ not installed')}</option>`).join('');
   for(const sl of [fontSel,fnAll]){ const v=sl.value; sl.innerHTML=opts; sl.value=v; }
 }
 fillFonts();
@@ -1504,7 +1523,8 @@ let fpages=[], fsels=new Set(), fundoS=[], fredoS=[];
 const catOf = id => id[0];
 
 freeMode.onchange = () => {
-  if(fundoS.length && !freeMode.checked && !confirm('離開自由編輯會重新載入原檔，目前的搬移／改字都會清掉。要繼續嗎？'))
+  if(fundoS.length && !freeMode.checked && !confirm(T('離開自由編輯會重新載入原檔，目前的搬移／改字都會清掉。要繼續嗎？',
+      'Leaving free edit reloads the source file — the moves and text edits you have made will be discarded. Continue?')))
     return freeMode.checked=true;
   // 從 .json 存檔還原的沒有原始 PDF，退不回一般模式
   if(!freeMode.checked && fpages.length && !buf){
