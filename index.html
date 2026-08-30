@@ -172,8 +172,8 @@
     <label id="freeLbl" title="不分列不分頁，整份原樣攤開，只搬移／編輯文字方塊與線條"><input type="checkbox" id="freeMode"> 自由編輯</label>
   </span>
   <span class="g tbl">
-    <button id="bu" onclick="undo()" title="復原 (⌘Z)">↩ 復原</button>
-    <button id="br" onclick="redo()" title="重做 (⇧⌘Z)">↪ 重做</button>
+    <button id="bu" class="dyn" onclick="undo()" title="復原 (⌘Z)">↩ 復原</button>
+    <button id="br" class="dyn" onclick="redo()" title="重做 (⇧⌘Z)">↪ 重做</button>
   </span>
   <span class="g">
     <span class="gt">檢視</span>
@@ -184,9 +184,10 @@
   <span class="g">
     <button class="pri" onclick="doPrint()">列印 / 存成 PDF</button>
   </span>
-  <span id="msg"></span>
-  <button id="btheme" title="切換亮色／深色介面（只影響工具列與面板，頁面本身一律白底）">☀ 亮色</button>
-  <button id="sideTog" title="收合／展開左側設定面板">◀ 設定</button>
+  <span id="msg" class="dyn"></span>
+  <button id="blang" title="Switch interface language / 切換介面語言">EN</button>
+  <button id="btheme" class="dyn" title="切換亮色／深色介面（只影響工具列與面板，頁面本身一律白底）">☀ 亮色</button>
+  <button id="sideTog" class="dyn" title="收合／展開左側設定面板">◀ 設定</button>
 </div>
 
 <div id="wrap">
@@ -202,7 +203,7 @@
     </section>
     <section class="tbl">
       <h3>分頁<em>整份套用</em></h3>
-      <button id="avgAll" title="所有頁面的列都平均分佈到表身底端">平均列高：全部頁面</button>
+      <button id="avgAll" class="dyn" title="所有頁面的列都平均分佈到表身底端">平均列高：全部頁面</button>
       <button id="freeze" title="把目前每一個分頁點都鎖起來，之後不會被推拉動到">🔒 凍結分頁</button>
       <button id="unfreeze" title="解開所有鎖定的分頁點（分頁位置不變）">🔓 清除鎖定</button>
     </section>
@@ -257,11 +258,11 @@
         <button onclick="step(-1)" title="上一個 (Shift+Enter)">‹</button>
         <button onclick="step(1)" title="下一個 (Enter)">›</button>
       </span>
-      <span class="lbl" id="fmsg"></span>
+      <span class="lbl dyn" id="fmsg"></span>
       <button id="chkB" onclick="chk()" title="標出被線壓到的字，以及原檔是白字／極淡字（印出來不會有標記）">檢查</button>
       <label title="字框先往內縮這麼多才判定壓線；調大只留下壓得深的">容許<input type="number" id="ovTol" value="0.5" min="0" max="6" step="0.25" style="width:3.6em">pt</label>
       <label title="原檔填色亮度 ≥ 此值就算白字（255＝純白）；調低會連淺灰字一起抓">白字門檻<input type="number" id="whThr" value="230" min="128" max="255" step="5" style="width:4em"></label>
-      <span class="lbl" id="cmsg"></span>
+      <span class="lbl dyn" id="cmsg"></span>
     </section>
   </aside>
   <div id="out"></div>
@@ -280,13 +281,56 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
+// ── 介面語言 ─────────────────────────────────────────────────
+// 靜態文字用字典整批換（原文留在 Map／dataset，切回中文時還原）；
+// JS 產生的字串用 T(中,英)。class="dyn" 的元素由 dynLabels() 自己管，字典不碰。
+const LANG_KEY='prs:lang';
+let LANG='zh'; try{ LANG=localStorage.getItem(LANG_KEY)==='en'?'en':'zh'; }catch(e){}
+const T=(zh,en)=>LANG==='en'?en:zh;
+const EN={"跳過前面的封面／目次，從這一頁開始讀": "Skip the cover / table of contents and start reading from this page","不分列不分頁，整份原樣攤開，只搬移／編輯文字方塊與線條": "No rows, no pagination — the whole document laid out as-is; just move and edit text boxes and lines","縮放到符合頁寬（對開表算左右兩頁的總寬）": "Zoom to fit page width (spreads count both halves)","縮放到一頁的高度剛好塞進視窗": "Zoom so one page fits the window height","回到原尺寸": "Back to 100%","切換亮色／深色介面（只影響工具列與面板，頁面本身一律白底）": "Toggle light / dark UI (toolbar and panel only — pages stay white)","收合／展開左側設定面板": "Collapse / expand the settings panel","表身上下留白，避免字壓到天地線": "Padding above and below the table body so text does not touch the top/bottom rules","列高再怎麼壓縮都不低於這個值": "Row height never compresses below this value","列高被拉開時，文字落在上下兩列的中間，而不是貼著自己那條基線": "When rows are spread out, centre the text between rows instead of sitting on its own baseline","最後一頁列不滿時，尾端的合計／總計列沉到地線上方，中間留白": "When the last page is not full, sink the trailing total rows onto the bottom rule and leave the gap in the middle","整份套用同一個字型，Windows／Mac 看到的結果就一致；「（原樣）」＝每個字保留原檔字型": "Apply one font to the whole document so Windows and Mac match; \"(as-is)\" keeps each glyph’s original font","所有頁面的列都平均分佈到表身底端": "Spread rows evenly down to the bottom of the table body on every page","把目前每一個分頁點都鎖起來，之後不會被推拉動到": "Lock every current page break so later pushes and pulls cannot move it","解開所有鎖定的分頁點（分頁位置不變）": "Unlock all locked page breaks (positions stay put)","表尾註第一列距地線多遠（只影響註，與上下邊界無關）": "Distance from the bottom rule to the first footnote line (footnotes only, unrelated to margins)","把表尾註整段接起來重新斷行（改完字之後用）；對開表會跨兩張紙接排": "Join the footnote block and re-wrap it (use after editing text); spreads flow across both sheets","把選取的連續列綁成一組，分頁不會拆開": "Bind the selected consecutive rows into one group so a page break cannot split them","解除選取列的群組": "Ungroup the selected rows","取消目前的列選取": "Clear the current row selection","點格子直接改字": "Click a cell to edit its text","表格模式：按住修飾鍵點格子選取；自由編輯：直接選文字方塊。再按對齊鈕": "Table mode: hold the modifier key and click cells; free edit: select text boxes directly. Then press an align button","靠左對齊": "Align left","水平置中": "Centre horizontally","靠右對齊": "Align right","水平均分": "Distribute horizontally","依欄線置中": "Centre between column rules","選到文字方塊才能改": "Available when a text box is selected","選到線條才能改": "Available when a line is selected","選取的線拉到同一個起點（左端／上端），另一端不動": "Move the selected lines to a common start (left / top); the other end stays","選取的線拉到同一個終點（右端／下端），另一端不動": "Move the selected lines to a common end (right / bottom); the other end stays","刪除選取物件（Delete）": "Delete the selected objects (Delete)","復原": "Undo","重做": "Redo","把目前的自由編輯結果存成 .json，之後拖回來就能接著改（不需要原始 PDF）": "Save the current free-edit result as .json; drop it back in later to keep editing (no original PDF needed)","畫出表身上下界（只在畫面上，不會印出來）": "Draw the table body bounds on screen only (never printed)","搜尋文字": "Find text","上一個 (Shift+Enter)": "Previous (Shift+Enter)","下一個 (Enter)": "Next (Enter)","標出被線壓到的字，以及原檔是白字／極淡字（印出來不會有標記）": "Mark glyphs clipped by rules, and text that is white / near-white in the source (marks are not printed)","字框先往內縮這麼多才判定壓線；調大只留下壓得深的": "Shrink the glyph box by this much before testing for clipping; raise it to keep only deep overlaps","原檔填色亮度 ≥ 此值就算白字（255＝純白）；調低會連淺灰字一起抓": "Source fill brightness at or above this counts as white text (255 = pure white); lower it to catch light grey too","檔案": "File","起始頁": "Start page","對開表": "Spread","自由編輯": "Free edit","檢視": "View","符合頁寬": "Fit width","符合頁高": "Fit height","列印 / 存成 PDF": "Print / Save as PDF","版面": "Layout","整份套用": "whole document","邊界 上": "Margin top","下": "bottom","最小列高": "Min row height","文字置中": "Centre text","合計貼地線": "Sink totals to bottom rule","整份字型": "Document font","分頁": "Pagination","🔒 凍結分頁": "🔒 Freeze breaks","🔓 清除鎖定": "🔓 Clear locks","表尾註": "Footnotes","註起始": "Note offset","重排備註": "Re-wrap notes","選取的列": "Selected rows","先在頁面上點選": "click on the page first","組成群組": "Group","解除群組": "Ungroup","取消選取": "Clear selection","編輯文字": "Edit text","對齊": "Align","＋點選格子": " + click cells","選取的物件": "selected objects","文字方塊": "Text box","線條": "Line","字型": "Font","線 長": "Line length","粗": "width","齊頭": "Align starts","齊尾": "Align ends","刪除": "Delete","存檔": "Save","拖曳搬移・線兩端可拉長度・雙擊改字・方向鍵微調（Shift 大步）": "Drag to move · drag a line end to resize · double-click to edit · arrow keys nudge (Shift = bigger step)","畫面": "Screen","不會印出來": "not printed","輔助線": "Guides","檢查": "Check","容許": "Tolerance","白字門檻": "White threshold","把 PDF 拖進來": "Drop a PDF here","或": "or ","點這裡選檔案": "click to choose a file","天地線、欄線、頁首、字型與框線粗細全部從原檔讀出來": "Top/bottom rules, column rules, headers, fonts and line widths all come from the source file","只調整資料列落在哪一頁，版面不動": "Only which page each row lands on changes — the layout does not","只吃文字型 PDF，掃描檔沒有文字圖層。表格需有橫貫全寬的天地線；無框線的純文字文件也可以，邊界改由內容決定。自由編輯的 .json 存檔也可以拖進來。": "Text-based PDFs only — scans have no text layer. Tables need full-width top and bottom rules; borderless plain-text documents also work, with bounds taken from the content. Free-edit .json saves can be dropped in too.","檔案不會上傳，全部在你這台電腦的瀏覽器裡處理。": "Nothing is uploaded — everything runs in the browser on your own machine."};
+const origText=new Map();
+const tr = s => { const t=s.trim(); const e=EN[t]; return t&&e!==undefined ? s.replace(t,e) : s; };
+function applyLang(){
+  document.documentElement.lang = LANG==='en'?'en':'zh-Hant';
+  for(const root of [ctl,side,drop]){
+    const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+    for(let n; n=w.nextNode();){
+      if(n.parentElement.closest('.dyn')) continue;
+      if(!origText.has(n)) origText.set(n,n.nodeValue);
+      n.nodeValue = LANG==='en' ? tr(origText.get(n)) : origText.get(n);
+    }
+    root.querySelectorAll('[title],[placeholder]').forEach(el=>{
+      if(el.closest('.dyn')) return;
+      for(const a of ['title','placeholder']){
+        if(!el.hasAttribute(a)) continue;
+        const k='o'+a;
+        if(el.dataset[k]==null) el.dataset[k]=el.getAttribute(a);
+        el.setAttribute(a, LANG==='en'?tr(el.dataset[k]):el.dataset[k]);
+      }
+    });
+  }
+  blang.textContent = LANG==='en' ? '中文' : 'EN';
+}
+
 const U=pdfjsLib; U.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 // 按鍵標示依平台換：Mac 用 ⌘/⌥，Windows、Linux 用 Ctrl/Alt
 const MAC=/Mac|iPhone|iPad/.test(navigator.platform||navigator.userAgent);
 const KMOD=MAC?'⌘':'Ctrl', KALT=MAC?'⌥':'Alt';
 kAlt.textContent=KALT;
-bu.title=`復原 (${KMOD}Z)`; br.title=`重做 (${MAC?'⇧⌘Z':'Ctrl+Shift+Z'})`;
+function dynLabels(){
+  bu.title=T('復原','Undo')+` (${KMOD}Z)`;
+  br.title=T('重做','Redo')+` (${MAC?'⇧⌘Z':'Ctrl+Shift+Z'})`;
+  bu.textContent=T('↩ 復原','↩ Undo'); br.textContent=T('↪ 重做','↪ Redo');
+  setTheme(document.body.classList.contains('dark'));
+  sideTog.textContent=T(document.body.classList.contains('sideOff')?'▶ 設定':'◀ 設定',
+                        document.body.classList.contains('sideOff')?'▶ Settings':'◀ Settings');
+  fillFonts();
+  units.length ? render() : status();
+}
+blang.onclick=()=>{ LANG=LANG==='en'?'zh':'en';
+  try{ localStorage.setItem(LANG_KEY,LANG); }catch(e){}
+  applyLang(); dynLabels(); };
 
 // 版面（固定，不隨資料跑）：W/H 頁面尺寸、frame 天地線與欄線、head 固定頁首、bodyTop/LH 表身格線
 // units[i] = 一個可搬動單位（1 列，或群組後的多列）；breaks 以 unit 為索引
@@ -302,7 +346,7 @@ let buf=null;
 // load() 中間有多個 await，連續換檔／切對開會兩份同時跑、互相蓋掉全域狀態（列數、行高全亂）。
 // 排隊跑，最後一次的結果就是畫面上的結果。
 let loading=Promise.resolve();
-const queueLoad=()=>{ loading=loading.then(load, load).catch(e=>{ console.error(e); fail('讀不到這個 PDF：'+(e.message||e)); }); };
+const queueLoad=()=>{ loading=loading.then(load, load).catch(e=>{ console.error(e); fail(T('讀不到這個 PDF：','Could not read this PDF: ')+(e.message||e)); }); };
 // 失敗就退回起始畫面，把原因寫在拖曳區下方（比 alert 好找，也還留在可以再拖一次的地方）
 const fail = m => { err.textContent=m; err.classList.add('bad'); drop.classList.remove('hide'); out.innerHTML=''; };
 f.onchange = e => { take(e.target.files[0]); };
@@ -311,9 +355,9 @@ f.onchange = e => { take(e.target.files[0]); };
 const take = file => {
   if(!file) return;
   if(/\.json$/i.test(file.name)) return loadSaved(file);          // 自由編輯的存檔
-  if(!/\.pdf$/i.test(file.name)){ err.classList.add('bad'); return err.textContent=`「${file.name}」不是 PDF 或自由編輯存檔（.json）`; }
+  if(!/\.pdf$/i.test(file.name)){ err.classList.add('bad'); return err.textContent=T(`「${file.name}」不是 PDF 或自由編輯存檔（.json）`,`"${file.name}" is not a PDF or a free-edit save (.json)`); }
   // 大檔要跑好幾秒（260 頁實測 6.4s），沒回饋會像當掉。成功時 drop 收起、失敗時 fail() 覆寫
-  err.classList.remove('bad'); err.textContent=`讀取中…（${file.name}）`; buf=file; queueLoad();
+  err.classList.remove('bad'); err.textContent=T(`讀取中…（${file.name}）`,`Loading… (${file.name})`); buf=file; queueLoad();
 };
 zone.onclick = () => f.click();
 drop.ondragover = e => { e.preventDefault(); zone.classList.add('on'); };
@@ -453,8 +497,9 @@ async function load(){
   // 這種檔的特徵是 sep 切太前面、幾乎整份被判成表尾註（OECD 300 頁實測 note=8757、表身 0 列）。
   const nNote = note.reduce((a,p)=>a+p.length,0);
   if(!rows.length){ fail(nNote>50
-    ? `找不到表身資料列（地線以下被判成註的有 ${nNote} 列）。這份看起來不是單一連續表格，請先切出單一張表再試。`
-    : '找不到可調整的資料列（需為文字型 PDF，掃描檔沒有文字圖層）'); return; }
+    ? T(`找不到表身資料列（地線以下被判成註的有 ${nNote} 列）。這份看起來不是單一連續表格，請先切出單一張表再試。`,
+        `No table body rows found (${nNote} lines below the bottom rule were treated as notes). This does not look like a single continuous table — split out one table and try again.`)
+    : T('找不到可調整的資料列（需為文字型 PDF，掃描檔沒有文字圖層）','No adjustable data rows found (needs a text-based PDF; scans have no text layer)')); return; }
 
   // 表身格線：起始 y 與行高取自原檔
   topY = rows[0].y;
@@ -753,12 +798,14 @@ function capEnds(ls){
   });
 }
 function status(){
-  msg.textContent=`${nlines(0,units.length)} 列 / 每頁上限 ${perPage} 列`
-    + (sel.size?`　已選 ${sel.size} 列`:'') + (selSeg.size?`　已選 ${selSeg.size} 格`:'');
+  msg.textContent=T(`${nlines(0,units.length)} 列 / 每頁上限 ${perPage} 列`,`${nlines(0,units.length)} rows / max ${perPage} per page`)
+    + (sel.size?T(`　已選 ${sel.size} 列`,` · ${sel.size} rows selected`):'')
+    + (selSeg.size?T(`　已選 ${selSeg.size} 格`,` · ${selSeg.size} cells selected`):'');
   bu.disabled=!undoS.length; br.disabled=!redoS.length;
   // 全部頁面那顆是切換鈕，名稱要跟著現在的狀態走
   const allOn = breaks.length && avgPg.size>=breaks.length;
-  avgAll.textContent = allOn ? '取消平均列高：全部頁面' : '平均列高：全部頁面';
+  avgAll.textContent = allOn ? T('取消平均列高：全部頁面','Undo even row height: all pages')
+                             : T('平均列高：全部頁面','Even row height: all pages');
   freeze.disabled = locks.size>=breaks.length-1; unfreeze.disabled = !locks.size;
 }
 
@@ -889,7 +936,8 @@ function render(){
         e.style.cssText=`left:0;top:${(ly ? bodyTop+ly[i]+dy-lyH*.8 : bodyTop+li*lh+dy-cy-lh*.8)}pt;width:100%;height:${u.length*(ly?lyH:lh)}pt`;
         e.draggable=!editMode.checked;   // 編輯模式下不拖曳，否則點字會變成拖列
         // 拖曳是「重排」，跨頁時次頁會遞補一列回來；要真的把列推到下頁得用頁間按鈕
-        e.title='拖曳＝與目標列交換位置（跨頁時次頁會遞補一列回來）\n要把最後一列推到下頁，請用頁與頁之間的「↓ 最後一列推到下頁」';
+        e.title=T('拖曳＝與目標列交換位置（跨頁時次頁會遞補一列回來）\n要把最後一列推到下頁，請用頁與頁之間的「↓ 最後一列推到下頁」',
+                'Drag = swap with the target row (across pages, the next page sends one back)\nTo push the last row to the next page use "↓ Push last row down" between the pages');
       e.dataset.i=start+i;
         e.innerHTML=u.map((r,j)=>segs(r,0,true,0,j*(ly?lyH:lh)+(ly?lyH:lh)*.8,`u,${start+i},${j}`,k)).join('');
         h.appendChild(e);
@@ -899,11 +947,11 @@ function render(){
     out.appendChild(sheet);
     const b=document.createElement('div'); b.className='brk';
     const lk=locks.has(end);
-    b.innerHTML=`<b>第 ${pi+1} 頁</b>　${ly?`原行距${lyH<LH-.05?`（壓縮至 ${(lyH/LH*100).toFixed(0)}%）`:''}`:`列高 ${lh.toFixed(1)}pt`}
-      <label title="從本頁套用到下一個鎖定的分頁點為止"><input type=checkbox data-a=1 ${avg?'checked':''}> 平均列高（到下一個鎖定點）</label>`
-      + (last?'':`　<button data-k=1 title="鎖住後這個分頁點不能移動">${lk?'🔒 已鎖':'🔓 鎖定'}</button>
-        <button data-d="-1" ${lk?'disabled':''}>↓ 最後一列推到下頁</button>
-        <button data-d="1" ${lk?'disabled':''}>↑ 下頁第一列拉上來</button>`);
+    b.innerHTML=`<b>${T(`第 ${pi+1} 頁`,`Page ${pi+1}`)}</b>　${ly?T('原行距','original leading')+(lyH<LH-.05?T(`（壓縮至 ${(lyH/LH*100).toFixed(0)}%）`,` (compressed to ${(lyH/LH*100).toFixed(0)}%)`):''):T(`列高 ${lh.toFixed(1)}pt`,`row height ${lh.toFixed(1)}pt`)}
+      <label title="${T('從本頁套用到下一個鎖定的分頁點為止','Applies from this page up to the next locked break')}"><input type=checkbox data-a=1 ${avg?'checked':''}> ${T('平均列高（到下一個鎖定點）','Even row height (to next lock)')}</label>`
+      + (last?'':`　<button data-k=1 title="${T('鎖住後這個分頁點不能移動','Once locked, this break cannot move')}">${lk?T('🔒 已鎖','🔒 Locked'):T('🔓 鎖定','🔓 Lock')}</button>
+        <button data-d="-1" ${lk?'disabled':''}>${T('↓ 最後一列推到下頁','↓ Push last row down')}</button>
+        <button data-d="1" ${lk?'disabled':''}>${T('↑ 下頁第一列拉上來','↑ Pull first row up')}</button>`);
     // 核取方塊走 change（點到 label 文字也算），按鈕走 click
     // 鎖定的分頁點是「段」的界線：從本頁一路套用到下一個鎖定點所在的那頁為止
     b.querySelector('[data-a]').onchange=ev=>{
@@ -971,7 +1019,7 @@ function reflowNote(){
   if(!blk || !blk.length) return;
   // 對開表用單頁模式開時，每一份註只是整句話的左半或右半，接起來會是錯的
   if(!spread.checked && note.filter(p=>p.length).length>1)
-    return alert('這份的註被拆在左右半頁，接起來會是錯的。請先勾「對開表」再重排。');
+    return alert(T('這份的註被拆在左右半頁，接起來會是錯的。請先勾「對開表」再重排。','This document\u2019s notes are split across the two halves; joining them would be wrong. Tick "Spread" first, then re-wrap.'));
   push();
   document.body.appendChild(mEl);
   try{ note[bi]=reflow(blk); } finally { mEl.remove(); }
@@ -1107,7 +1155,7 @@ syncCtlH();
 const THEME_KEY='prs:theme';
 function setTheme(dark){
   document.body.classList.toggle('dark', dark);
-  btheme.textContent = dark ? '🌙 深色' : '☀ 亮色';
+  btheme.textContent = dark ? T('🌙 深色','🌙 Dark') : T('☀ 亮色','☀ Light');
   try{ localStorage.setItem(THEME_KEY, dark?'dark':'light'); }catch(e){}
 }
 let themeSaved=null; try{ themeSaved=localStorage.getItem(THEME_KEY); }catch(e){}
@@ -1115,7 +1163,8 @@ setTheme(themeSaved ? themeSaved==='dark'
                     : matchMedia('(prefers-color-scheme: dark)').matches);   // 沒設定過就跟系統走
 btheme.onclick=()=>setTheme(!document.body.classList.contains('dark'));
 sideTog.onclick=()=>{ document.body.classList.toggle('sideOff');
-  sideTog.textContent=document.body.classList.contains('sideOff')?'▶ 設定':'◀ 設定';
+  sideTog.textContent=T(document.body.classList.contains('sideOff')?'▶ 設定':'◀ 設定',
+                        document.body.classList.contains('sideOff')?'▶ Settings':'◀ Settings');
   fitMode&&fit(fitMode); };
 
 // ── 檢查：被線壓到的字、原檔的白字／極淡字 ────────────────────────
@@ -1173,7 +1222,8 @@ function scan(){
   let m=0;
   out.querySelectorAll('[data-lt]').forEach(e=>{ const on=+e.dataset.lt>=thr; e.classList.toggle('wht',on); m+=on; });
   const pn=paleV.filter(v=>v>=thr).length;
-  cmsg.textContent=`字被線壓到 ${n} 處・原檔白字 ${pn} 段`+(pn&&m!==pn?`（標出 ${m} 處）`:'');
+  cmsg.textContent=T(`字被線壓到 ${n} 處・原檔白字 ${pn} 段`,`${n} clipped by rules · ${pn} white runs in source`)
+    +(pn&&m!==pn?T(`（標出 ${m} 處）`,` (${m} marked)`):'');
 }
 
 // ── 搜尋：逐個文字方塊比對（PDF 的一段字就是一個 .seg）──
@@ -1191,7 +1241,7 @@ function doFind(reset=true){
   showHit(reset);
 }
 function showHit(scroll=true){
-  fmsg.textContent = hits.length ? `${hi+1}/${hits.length}` : (fq.value.trim()?'找不到':'');
+  fmsg.textContent = hits.length ? `${hi+1}/${hits.length}` : (fq.value.trim()?T('找不到','no match'):'');
   hits.forEach(e=>e.classList.remove('cur'));
   const e=hits[hi]; if(!e) return;
   e.classList.add('cur');
@@ -1229,7 +1279,7 @@ function align(mode){
   // 對開時同一格會有左右兩份 DOM（右半是複本），依 data-p 去重
   const seen=new Set(), els=[...out.querySelectorAll('.seg.pick')]
     .filter(el=>!seen.has(el.dataset.p) && seen.add(el.dataset.p));
-  if(els.length<(mode==='col'?1:2)) return alert(`按住 ${KALT} 點選要對齊的格子，至少兩格`);
+  if(els.length<(mode==='col'?1:2)) return alert(T(`按住 ${KALT} 點選要對齊的格子，至少兩格`,`Hold ${KALT} and click the cells to align — at least two`));
   const sheets=[...out.querySelectorAll('.sheet')];
   const box=els.map(el=>({p:el.dataset.p, x:seg0(el.dataset.p).x, w:PT(el),
                           pi:sheets.indexOf(el.closest('.sheet'))}));
@@ -1241,7 +1291,7 @@ function align(mode){
 // 自由編輯：對齊目前選取的物件（文字方塊、線條都可以，都是整個搬移）
 function alignFree(mode){
   const ids=[...fsels];
-  if(ids.length<(mode==='col'?1:2)) return alert('先選要對齊的物件，至少兩個');
+  if(ids.length<(mode==='col'?1:2)) return alert(T('先選要對齊的物件，至少兩個','Select the objects to align first — at least two'));
   // 文字方塊的寬度要量畫面（原檔字寬壓縮過），線條直接用自己的長度（直線是 0）
   const box=ids.map(id=>{ const o=fobj(id);
     return {o, pi:+id.split(',')[1], x:o.x, w:o.sz?PT(fel(id)):(o.w||0)}; });
@@ -1329,7 +1379,7 @@ function setSeg(p,t){
 // ── 選取與群組：選連續的 2 列以上組成群組，之後一起搬、不會被分頁拆開 ──
 function group(){
   const ix=[...sel].sort((a,b)=>a-b);
-  if(ix.length<2) return alert('請先選兩列以上（點一下起點，Shift 點終點）');
+  if(ix.length<2) return alert(T('請先選兩列以上（點一下起點，Shift 點終點）','Select at least two rows first (click the start, Shift-click the end)'));
 
   push();
   const merged=[].concat(...units.slice(ix[0],ix[0]+ix.length));
@@ -1424,11 +1474,14 @@ const FONTS=[['微軟正黑體',"'微軟正黑體','Microsoft JhengHei',sans-ser
              ['Times New Roman',"'Times New Roman',Times,serif"],
              ['Arial',"Arial,Helvetica,sans-serif"]];
 const famOf = n => (FONTS.find(f=>f[0]===n)||[])[1];
-fontSel.innerHTML='<option value="">（原樣）</option>'
-  + FONTS.map(([n])=>`<option value="${n}">${n}${hasFont(n)?'':' ⚠本機無'}</option>`).join('');
 // 整份字型：一般模式套用到全部文字（rows／head／note 都換），進自由編輯時寫成 f 一起存檔
-fnAll.innerHTML='<option value="">（原樣）</option>'
-  + FONTS.map(([n])=>`<option value="${n}">${n}${hasFont(n)?'':' ⚠本機無'}</option>`).join('');
+// 換語言時整份重建，選到的值自己存回去
+function fillFonts(){
+  const opts=`<option value="">${T('（原樣）','(as-is)')}</option>`
+    + FONTS.map(([n])=>`<option value="${n}">${n}${hasFont(n)?'':T(' ⚠本機無',' ⚠ not installed')}</option>`).join('');
+  for(const sl of [fontSel,fnAll]){ const v=sl.value; sl.innerHTML=opts; sl.value=v; }
+}
+fillFonts();
 fnAll.onchange = () => { fontAll=fnAll.value; units.length && render(); };
 fontSel.onchange = () => {
   const ids=[...fsels].filter(id=>catOf(id)==='t');
@@ -1451,7 +1504,7 @@ freeMode.onchange = () => {
     return freeMode.checked=true;
   // 從 .json 存檔還原的沒有原始 PDF，退不回一般模式
   if(!freeMode.checked && fpages.length && !buf){
-    freeMode.checked=true; return alert('這是從 .json 存檔還原的，沒有原始 PDF 可以退回一般模式。'); }
+    freeMode.checked=true; return alert(T('這是從 .json 存檔還原的，沒有原始 PDF 可以退回一般模式。','This was restored from a .json save — there is no original PDF to return to normal mode with.')); }
   document.body.classList.toggle('free', freeMode.checked);
   fsels.clear(); fundoS=[]; fredoS=[];
   // 進自由編輯時接手畫面上調好的版面（分頁、列高、備註都已經算進去），不重讀原檔把它作廢
@@ -1493,8 +1546,8 @@ function saveFree(){
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
 }
 async function loadSaved(file){
-  let d; try{ d=JSON.parse(await file.text()); }catch(e){ return fail('這個 .json 讀不出來：'+e.message); }
-  if(!d || !Array.isArray(d.fpages) || !d.fpages.length) return fail(`「${file.name}」不是自由編輯的存檔`);
+  let d; try{ d=JSON.parse(await file.text()); }catch(e){ return fail(T('這個 .json 讀不出來：','Could not read this .json: ')+e.message); }
+  if(!d || !Array.isArray(d.fpages) || !d.fpages.length) return fail(T(`「${file.name}」不是自由編輯的存檔`,`"${file.name}" is not a free-edit save`));
   fpages=d.fpages; pageW=W=d.pageW||fpages[0].w; H=d.H||fpages[0].h;
   // 舊存檔可能存了部首字元，讀回時一併正規化
   fpages.forEach(p=>p.t.forEach(s=>s.t=normCJK(s.t)));
@@ -1545,9 +1598,9 @@ function renderFree(){
     sheet.appendChild(el); out.appendChild(sheet);
   });
   paintFsel(); bindFree(); fitWidths();
-  msg.textContent=`自由編輯　${fpages.length} 頁　`
-    + `${fpages.reduce((n,p)=>n+p.t.length,0)} 個文字方塊　${fpages.reduce((n,p)=>n+p.l.length,0)} 條線`
-    + (fsels.size?`　已選 ${fsels.size}`:'');
+  msg.textContent=T(`自由編輯　${fpages.length} 頁　${fpages.reduce((n,p)=>n+p.t.length,0)} 個文字方塊　${fpages.reduce((n,p)=>n+p.l.length,0)} 條線`,
+      `Free edit · ${fpages.length} pages · ${fpages.reduce((n,p)=>n+p.t.length,0)} text boxes · ${fpages.reduce((n,p)=>n+p.l.length,0)} lines`)
+    + (fsels.size?T(`　已選 ${fsels.size}`,` · ${fsels.size} selected`):'');
 }
 
 // 搬移時只改這幾個元素的樣式，不整份重畫（重畫 200 頁會頓）
@@ -1569,7 +1622,7 @@ function paintFsel(){
   const fs=new Set(ts.map(id=>fobj(id).f||''));
   fontSel.value = fs.size===1 ? [...fs][0] : '';        // 多選字型不一致時留空白，選了才一起套
   delObj.disabled=!fsels.size; fbu.disabled=!fundoS.length; fbr.disabled=!fredoS.length;
-  if(fpages.length) msg.textContent=msg.textContent.replace(/　已選 \d+$/,'')+(fsels.size?`　已選 ${fsels.size}`:'');
+  if(fpages.length) msg.textContent=msg.textContent.replace(/(　已選 \d+| · \d+ selected)$/,'')+(fsels.size?T(`　已選 ${fsels.size}`,` · ${fsels.size} selected`):'');
 }
 
 // ponytail: 快照整份 JSON，最單純也夠用；大檔（數百頁）若卡再改成記單一物件的差異
@@ -1653,7 +1706,7 @@ function dragEnd(el,o,grab,ev){
 // 齊頭／齊尾：把選取的線拉到同一個起點／終點（另一端不動）；橫線直線各算各的
 function alignLine(tail){
   const ls=[...fsels].filter(id=>catOf(id)==='l').map(fobj);
-  if(ls.length<2) return alert('先選要對齊的線條，至少兩條');
+  if(ls.length<2) return alert(T('先選要對齊的線條，至少兩條','Select the lines to align first — at least two'));
   fpush();
   [1,0].forEach(hz=>{
     const g=ls.filter(o=>hz ? o.w>0 : !(o.w>0));
@@ -1739,6 +1792,9 @@ addEventListener('keydown', e=>{
   fsels.forEach(id=>{ const o=fobj(id); o.x+=v[0]; o.y+=v[1]; place(fel(id), o); });
   paintFsel();
 });
+
+// 語言最後套用：字典要蓋掉的靜態文字此時都在，dynLabels() 會順便重畫
+applyLang(); dynLabels();
 </script>
 
 <!-- Google tag (gtag.js) -->

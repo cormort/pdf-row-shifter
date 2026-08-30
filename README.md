@@ -1,8 +1,12 @@
 # PDF 資料列分頁調整
 
+*[English](README.en.md)*
+
 瀏覽器裡直接調整 PDF 表格的分頁位置，不用重排原始文件。單一 HTML 檔，開了就能用。
 
 **線上版**：https://cormort.github.io/pdf-row-shifter/
+
+介面有繁體中文與英文兩種，按工具列的 **EN / 中文** 切換，選擇會記在 `localStorage`。
 
 ## 功能
 
