@@ -2,8 +2,8 @@
 
 *[中文說明](README.md)*
 
-Adjust where a PDF table's page breaks fall, straight in the browser, without re-laying-out the
-original document. A single HTML file — open it and it works.
+Adjust where a PDF table's page breaks fall, straight in the browser, without re-laying out the
+original. A single HTML file — open it and it works.
 
 **Live version**: https://cormort.github.io/pdf-row-shifter/
 
@@ -13,13 +13,13 @@ The choice is remembered in `localStorage`.
 ## Features
 
 - **Start screen**: a full-page drop zone — drag a PDF in, or click to pick a file. A failed load
-  returns here and states why (not a PDF, corrupt file, no data rows found), so the error message is
-  where you already are. Nothing is uploaded; everything runs in the local browser.
+  returns here and says why (not a PDF, corrupt file, no data rows found), so you never have to go
+  looking elsewhere for the error. Nothing is uploaded; everything runs in the local browser.
 
 - **Original layout preserved**: text and rules are extracted with pdf.js and absolutely positioned
   at their original coordinates — top/bottom rules, column rules and headers never move.
 - **Repagination**: `↓ Push last row down` / `↑ Pull first row up`, or drag any row to a new position.
-- **Groups**: click a start row, Shift-click an end row, group them, and they move together and are
+- **Groups**: click a start row, Shift-click an end row, group them, and they move as one and are
   never split by a page break (for project names that wrap across lines).
 - **Automatic leading**: rows on every page but the last are spread evenly down to the bottom of the
   table body, so removing or inserting rows never leaves an odd gap at the foot; when overfull they
@@ -61,10 +61,10 @@ Roman these official forms were set in, so reproduction is closer; if the machin
 program measures the actual glyph widths and corrects for them — the layout (column rules,
 pagination, baselines) still lines up, only the letterforms differ.
 
-## Rule detection: the conditions under which lines come out right
+## Detecting the rules: what has to hold for the lines to come out right
 
-Rules are reconstructed by following the CTM through pdf.js's operator list by hand. This was verified
-against 13 real official forms (rasterising each page at 4× , scanning out dark full-width bands as
+The rules are reconstructed by hand, following the CTM through pdf.js's operator list. This was
+verified against 13 real official forms (rasterising each page at 4×, scanning out dark full-width bands as
 ground truth, then comparing every extracted line's position / length / thickness). All of the
 following must hold:
 
@@ -76,7 +76,7 @@ following must hold:
 | Keep only lengths > 2pt | Filters out marker dots | 0 lines wrongly dropped |
 | A rectangle counts as a line only if its short side is ≤ 2pt | Both sides > 2 means a filled block, discarded | 34 filled blocks dropped (44×17, 143×16), all fills |
 | Merge only when thicknesses touch / overlap and the lengths intersect | Two touching 1pt lines merge into one 2pt line | assumes the width is correct |
-| A spanning line must cover 90% of the table width | Used to fix the top/bottom rules and the header cut | held for all 13 files; the fallback was never used |
+| A spanning line must cover 90% of the table width | Used to pin down the top/bottom rules and the header cut | held for all 13 files; the fallback was never used |
 
 **Rules are per page, not one set for the whole document**: originally only the first page's set was
 read and the same coordinates drawn on every page. Open a spread in single-page mode and the two
@@ -99,7 +99,7 @@ set and each page takes its own:
 page-by-page comparisons (a full coordinate fingerprint per line): in spread mode 12/13 files
 identical; in single-page mode the even pages of 6 spreads were corrected and 4 files were identical.
 
-**A trap hit along the way**: some files (e.g. `03-參考-OF-01-主要營運`) contain no
+**A trap we walked into**: some files (e.g. `03-參考-OF-01-主要營運`) contain no
 `setLineWidth` at all. Treating the default width as 0.5 means the thickness ranges never touch during
 merging, so a 2pt top/bottom rule splits into two 1pt lines, `spanning()` emits duplicate y values
 (89 and 90, 800 and 801), and the table body's lower bound ends up 1pt off. With the default at 1.0,
@@ -125,8 +125,8 @@ proportionally as rows compress. Measured across 13 files:
 What was verified (13 files × single-page/spread): row counts and leading, **text-overlap detection**
 (text blocks on different rows must not overlap vertically where they intersect horizontally), and
 **font reproduction** (the bold and serif glyph counts must exactly match the source's embedded
-fonts). Bold / serif matched 10/10 exactly; overlap was zero in 18/20 — the two non-zero cases force
-"spread" on a continuation-style PDF, which does not apply in the first place.
+fonts). Bold / serif matched 10/10 exactly; overlap was zero in 18/20 — the two non-zero cases come from
+forcing "spread" on a continuation-style PDF, where it does not apply in the first place.
 
 ## Footnotes: the bottom rule cannot separate them
 
@@ -135,7 +135,7 @@ Judging by the rule alone leaves the lines above it in the table body as data ro
 below move to the last page, tearing a large gap in between (`03-參考-OF-05-固資來源`
 shows it most clearly).
 
-The rule became content-anchored: on a given page, a line starting with 註／附註／說明 ("note",
+The heuristic became content-anchored: on a given page, a line starting with 註／附註／說明 ("note",
 "footnote", "explanation") — restricted to the lower part of the page, `y > page height × 0.6` — starts
 a footnote block that runs to the foot of the page. Across all 13 files such a line is always that
 page's last block with no data rows after it, so no data is swallowed.
@@ -169,7 +169,7 @@ comparisons the row counts were entirely unchanged with no text overlap anywhere
 change: `綜計-OF-01`'s note is on page 1 of the source (9 pages total) and now stays on page 1
 instead of moving to the last page.
 
-**The bottom rule is pulled up per page, as the source does**: the rule is raised to make room for the
+**The bottom rule is pulled up per page, just as the source does**: the rule is raised to make room for the
 notes below it, so drawing the first page's rule on every page boxes the notes inside the table
 (`固資成本效益`: notes 82pt above the bottom rule, `OF-08-基金`: 62pt). Each page now draws its
 own, with the ends of the verticals shortened to match. Three conditions must all hold, otherwise
@@ -213,12 +213,12 @@ fragment or leaves a hole. `Re-wrap notes` joins the whole block and refills the
   reaching the right edge of a half-page continues on the next half-page
 - **Numbers are not split**: a run like `235,229` is one token; only Chinese breaks per character
 - **Width measurement**: measured with a hidden `.seg` whose font and fallback match the screen, and
-  removed from the DOM immediately after — an element parked off-layout still counts toward the layout
-  width, and Chrome's print would shrink the whole document to "fit width"
+  removed from the DOM immediately after — an element parked outside the layout still counts toward
+  the page width, and Chrome would then shrink the whole document at print time to fit it
 
 Two traps found in testing: **not every note spans both pages** (`長債`'s note occupies only
-the left half, and spreading it to two page widths crushes 8 lines into 4), so the source is inspected
-for how many half-pages the note actually reaches; and **some notes are wider than the table**
+the left half, and spreading it to two page widths crushes 8 lines into 4), so the source is inspected to
+see how many half-pages the note actually reaches; and **some notes are wider than the table**
 (`固資成本效益` reaches 604 while the rules stop at 577), so the right edge is the greater of
 the rule position and the original note width, otherwise the text is squeezed and gains a line for
 nothing.
@@ -239,8 +239,8 @@ boxes and lines flattened per page). Neither can reuse the other, so switching m
 the source file — and the pagination and row heights you had set were thrown away.
 
 It now **takes over the layout already drawn on screen** when entering free edit: it reads the DOM,
-where every `.seg`'s `left` / `top` is already in points — what you see is what you get, with no need
-to redo `render()`'s arithmetic (row height, translation, centring). Table-body text is nested in a
+where every `.seg`'s `left` / `top` is already in points — what you see is what you get, with no need to
+redo `render()`'s arithmetic (row height, translation, centring). Table-body text is nested in a
 `.row` with a `top` relative to the row, so the row's own position is added; `top` is the top of the
 glyph box, so `baseOff` is added back to make it a baseline when writing to `fpages`. In spread mode a
 half-page is one sheet, so flattening gives exactly what prints.
@@ -291,7 +291,7 @@ break the "all pages end level" property of the layout.
 **Dragging reorders; it does not move between pages.** `breaks` stores unit indices, and dragging only
 changes the order of the `units` array, so a cross-page drag always squeezes one row back. "Push it
 across without the next page sending one back" = reorder, then move that break by ±1 (the existing
-`move(pi,±1)` logic, about 3 lines; better hung off a modifier key than made the default feel).
+`move(pi,±1)` logic, about 3 lines; better hung off a modifier key than baked into the default feel).
 For now the row tooltip explains the behaviour and points at the push/pull buttons between pages.
 
 **The last page's bottom rule is not adjustable by hand.** The rule is a `frame` line read from the
