@@ -12,7 +12,9 @@ The choice is remembered in `localStorage`.
 
 ## Features
 
-- **Start screen**: a full-page drop zone — drag a PDF in, or click to pick a file. A failed load
+- **Start screen**: a full-page drop zone that leads with **what the tool is and is not for**
+  (repaginating one continuous table; not for whole 10-Ks, annual reports or other multi-section
+  documents), with the full conditions in a tooltip on the drop area. Drag a PDF in, or click to pick a file. A failed load
   returns here and says why (not a PDF, corrupt file, no data rows found), so you never have to go
   looking elsewhere for the error. Nothing is uploaded; everything runs in the local browser.
 
@@ -82,10 +84,21 @@ following must hold:
 | The line width is read correctly | With no `setLineWidth`, use the PDF spec default of **1.0**; an explicit `w 0` is a hairline and only that counts as 0.5 | see below |
 | Line width is saved and restored with `q`/`Q` | Line width is part of the graphics state; saving only the CTM leaks the inner width outward | fixed |
 | Keep only lengths > 2pt | Filters out marker dots | 0 lines wrongly dropped |
+| A fill brighter than 230 is not a line | Too light to see means it was never drawn | 174 dropped per page in Apple's FY24 Q4 |
+| A path followed by `clip` / `endPath` is not a line | That is a clipping region and is never painted | 1,427 per page in Apple's file |
 | A rectangle counts as a line only if its short side is ≤ 2pt | Both sides > 2 means a filled block, discarded | 34 filled blocks dropped (44×17, 143×16), all fills |
 | Merge only when thicknesses touch / overlap and the lengths intersect | Two touching 1pt lines merge into one 2pt line | assumes the width is correct |
 | A spanning line must cover 90% of the table width | Used to pin down the top/bottom rules and the header cut | held for all 13 files; the fallback was never used |
 | Deciding "is this a table at all" needs a horizontal over 80% of the page width | Below that, the borderless path is taken | see below |
+
+**A line you cannot see is not a line**: rules in these PDFs are filled flat rectangles, and a source
+can paint the same spot twice — Apple's FY24 Q4 statements put 126 pairs of 3.6×14pt rectangles per
+page at `239,239,239` and `255,255,255`, both invisible on white paper (rasterise the page and that
+column has 0 dark pixels out of 8,869 sampled). Without reading the colour they stack row by row into
+a solid black bar that is not in the original. Tracking `setFillRGBColor` (saved and restored with
+`q`/`Q`) and rejecting fills at 230 or brighter takes that page from 248 extracted lines to 74, and
+from 126 verticals to 0, matching the source. Only 78 of the file's filled paths are actually black.
+The 13 Chinese files draw in black and are unchanged file by file.
 
 **The "is this a table" threshold is 80% of the page width, not 50%**: measured across the corpus,
 genuine top/bottom rules run 85–92% of the page width (91.9% across the 13 Chinese files, 90.2% in
@@ -321,10 +334,6 @@ blocked with a message.
   Footnote detection is gated on `!noFrame`, so those three never reach the note logic at all, and the
   93-page 10-K flattens into 3,632 meaningless "rows". Such documents are outside what this tool is
   for (a single continuous table); it now at least says so in the status bar.
-- **Rules the source draws but never shows come out black.** Line extraction does not track stroke
-  colour (white *text* is handled, white *lines* are not). Measured on Apple's FY24 Q4 statements:
-  126 zero-width vertical segments of about 14pt each stack up at x=366, invisible in the source and
-  a solid black bar here. Not yet addressed.
 - When one file holds several tables with different columns (e.g. `綜計-OF-01` contains 4), rules
   are drawn per page, but **rows cannot be pushed across tables** — text x positions do not follow the
   new table, so a pushed row lands in the wrong columns. Split out a single table first.
