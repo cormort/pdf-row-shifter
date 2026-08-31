@@ -140,13 +140,24 @@ The heuristic became content-anchored: on a given page, a line starting with 註
 a footnote block that runs to the foot of the page. Across all 13 files such a line is always that
 page's last block with no data rows after it, so no data is swallowed.
 
-For English documents the anchors are `Note:`, `Notes:` and `Source:` (optionally preceded by `*`),
-and the **colon or full stop is required**: `Notes payable to …` is a genuine data row in plenty of
+English documents use a second set of anchors, enabled **only when the file contains no Chinese at
+all** — with any Chinese present the original rule above applies unchanged, so Chinese files take the
+identical code path they did before this existed.
+
+The English anchors are `(1)`, `(a)`, `*`, `**`, `†`, `See accompanying…`, `Note:` and `Source:`, and
+the block **extends upward** from the anchor: a real 10-K's note block often opens with `(1) …` and
+keeps `See accompanying notes…` for the last line, so matching only that last line would leave the
+rows above it as data. Upward extension stops at the first line that either does not look like a note
+or carries an amount in the right-hand column — which is what keeps `(2) Segment detail` a data row.
+
+For `Note:`, `Notes:` and `Source:` the **colon or full stop is required**: `Notes payable to …` is a genuine data row in plenty of
 financial tables, and without that constraint everything from it down would be swallowed as a note.
-The Chinese 註 is rare enough as a row opener that it needs no such guard. Measured on a synthetic
-English Letter table: a `Note:` straddling the bottom rule moves from the data rows (47 rows / 2 note
-lines) into the notes (46 rows / 3 note lines), while `Notes payable to related parties` on the same
-page stays a data row.
+The Chinese 註 is rare enough as a row opener that it needs no such guard.
+
+Verified against 7 English fixtures (10-K primary statement, sell-side research table, earnings deck,
+symbol footnotes, mixed, a no-footnote control, and a 10-K lookalike): note text matched word for
+word, data row counts matched exactly, and none of the 7 trap rows was swallowed. The 13 Chinese
+files show zero change in either single-page or spread mode.
 
 **Why not a global y band**: the notes' y positions look fixed, but the note bands of
 `OF-06-固資成本效益` (notes start at 712.8) and `OF-07-長債` (690) contain hundreds
@@ -273,6 +284,10 @@ blocked with a message.
   character in the source and has to be edited character by character.
 - Rule detection assumes the table has full-width top and bottom rules; unusual layouts may need
   adjustment.
+- **A cover or contents page with no rules makes the whole file count as "borderless"**, which turns
+  footnote detection off entirely (`noFrame` looks for two or more full-width horizontals on the
+  first page). Skipping the cover with "Start page" fixes it — measured on a 3-page 10-K style
+  fixture, start page 1 left all 6 note lines as data rows; start page 2 classified all 6 correctly.
 - When one file holds several tables with different columns (e.g. `綜計-OF-01` contains 4), rules
   are drawn per page, but **rows cannot be pushed across tables** — text x positions do not follow the
   new table, so a pushed row lands in the wrong columns. Split out a single table first.

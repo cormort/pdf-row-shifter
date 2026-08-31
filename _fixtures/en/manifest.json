@@ -1,0 +1,152 @@
+{
+  "A.pdf": {
+    "paper": [
+      612.0,
+      792.0
+    ],
+    "pages": 3,
+    "row_leading_pt": 20,
+    "note_lines": [
+      "See accompanying notes to consolidated financial statements.",
+      "See accompanying notes to consolidated financial statements.",
+      "See accompanying notes to consolidated financial statements."
+    ],
+    "note_lines_per_page": [
+      1,
+      1,
+      1
+    ],
+    "data_row_count": 66,
+    "trap_rows": [
+      "Notes payable to related parties",
+      "Note receivable, net of current portion",
+      "(Loss) income before income taxes"
+    ]
+  },
+  "B.pdf": {
+    "paper": [
+      612.0,
+      792.0
+    ],
+    "pages": 2,
+    "row_leading_pt": 20,
+    "note_lines": [
+      "(1) Includes restructuring charges of $12.4 million.",
+      "(2) Adjusted to exclude one-time items.",
+      "Source: Company filings, XYZ Research estimates."
+    ],
+    "note_lines_per_page": [
+      0,
+      3
+    ],
+    "data_row_count": 40,
+    "trap_rows": [
+      "(2) Segment detail"
+    ]
+  },
+  "C.pdf": {
+    "paper": [
+      612.0,
+      792.0
+    ],
+    "pages": 2,
+    "row_leading_pt": 20,
+    "note_lines": [
+      "Note: 1. Figures are unaudited and stated in thousands.",
+      "2. Comparatives have been restated to conform with current presentation.",
+      "* Excludes discontinued operations."
+    ],
+    "note_lines_per_page": [
+      0,
+      3
+    ],
+    "data_row_count": 37,
+    "trap_rows": []
+  },
+  "D.pdf": {
+    "paper": [
+      612.0,
+      792.0
+    ],
+    "pages": 2,
+    "row_leading_pt": 20,
+    "note_lines": [],
+    "note_lines_per_page": [
+      0,
+      0
+    ],
+    "data_row_count": 42,
+    "trap_rows": [
+      "Notes payable",
+      "Source of funds",
+      "Note 12 - Commitments"
+    ]
+  },
+  "E.pdf": {
+    "paper": [
+      612.0,
+      792.0
+    ],
+    "pages": 2,
+    "row_leading_pt": 20,
+    "note_lines": [
+      "* Restated.",
+      "** Preliminary, subject to audit.",
+      "† Represents non-GAAP measure."
+    ],
+    "note_lines_per_page": [
+      0,
+      3
+    ],
+    "data_row_count": 45,
+    "trap_rows": [
+      "Revenue*"
+    ]
+  },
+  "F.pdf": {
+    "paper": [
+      612.0,
+      792.0
+    ],
+    "pages": 2,
+    "row_leading_pt": 20,
+    "note_lines": [
+      "(1) Amounts in thousands, except per share data.",
+      "See accompanying notes to consolidated financial statements."
+    ],
+    "note_lines_per_page": [
+      0,
+      2
+    ],
+    "data_row_count": 40,
+    "trap_rows": [
+      "Notes and loans payable"
+    ]
+  },
+  "G.pdf": {
+    "paper": [
+      612.0,
+      792.0
+    ],
+    "pages": 3,
+    "row_leading_pt": 20,
+    "note_lines": [
+      "(1) Net income divided by basic weighted average shares.",
+      "(2) Net income divided by diluted weighted average shares.",
+      "(c) Represents the per-share impact of the non-GAAP adjustments to net income.",
+      "See accompanying Notes to the Consolidated Financial Statements.",
+      "* Certain amounts differ from prior year reported amounts due to a change in presentation (see Financial Statement Note 1.W).",
+      "See accompanying Notes to the Consolidated Financial Statements."
+    ],
+    "note_lines_per_page": [
+      0,
+      4,
+      2
+    ],
+    "data_row_count": 42,
+    "trap_rows": [
+      "Notes payable"
+    ],
+    "cover_pages": 1
+  }
+}
