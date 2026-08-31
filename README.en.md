@@ -5,6 +5,11 @@
 Adjust where a PDF table's page breaks fall, straight in the browser, without re-laying out the
 original. A single HTML file — open it and it works.
 
+**What it is for**: **one continuous table** inside a PDF — deciding which rows land on which page.
+**What it is not for**: a whole 10-K, annual report or other multi-section document (there is no
+single table to repaginate; it flattens into thousands of meaningless "rows"). The start screen and
+the drop area's tooltip both say so.
+
 **Live version**: https://cormort.github.io/pdf-row-shifter/
 
 The interface ships in Traditional Chinese and English; press **EN / 中文** in the toolbar to switch.
@@ -325,8 +330,18 @@ blocked with a message.
 - Text-based PDFs only; scans have no text layer.
 - Editing works on the PDF's own text fragments; a title with letter-spacing is one fragment per
   character in the source and has to be edited character by character.
-- Rule detection assumes the table has full-width top and bottom rules; unusual layouts may need
-  adjustment.
+- Rule detection assumes the table has full-width top and bottom rules (the threshold is over 80% of
+  the page width); unusual layouts may need adjustment.
+- Documents mixing Chinese and English take the Chinese footnote rules. The English-only anchors are
+  gated on "no Chinese anywhere in the file", which is what keeps Chinese files byte-identical to
+  before that code existed.
+- A page laid out as "table 1 → table 1's footnote → table 2" (common in US earnings releases) does
+  not get its notes detected. Only `Note:`, `Notes:`, `Source:` and `See accompanying notes…` are
+  anchors, and a note block always runs to the foot of the page — see item 1 under *Where the
+  diagnosis went wrong*.
+- A note block opening with `(1)`, `(a)` or a bare `*` (common in real 10-Ks) only picks up the
+  closing `See accompanying…` line; the rows above it stay data. Deliberately not widened, same
+  reason.
 - **Most US financial documents have no full-width rules at all, so they take the "borderless" path.**
   Measured on four official files (Apple's FY24 Q4 consolidated statements, NVIDIA's FY26 10-K,
   NVIDIA's FY26 Q3 release, and the US Treasury's FRUSG 2024): **three** of them have 0–1 full-width
@@ -341,6 +356,41 @@ blocked with a message.
   `Note:`) (e.g. the right
   half of `OF-05-固資來源`) stays among the data rows. Spread mode does not have this
   problem — the halves merge by y, so the continuation and "註：" are on the same row.
+
+## Where the diagnosis went wrong
+
+A few wrong turns while fixing the above, recorded so they are not repeated. The common thread is
+**reading a number instead of looking at the output**.
+
+**1. Synthetic fixtures lure you into over-widening a rule; a real file is the judge.**
+To make one synthetic 10-K lookalike pass, `(1)`, `(a)`, `*` and `†` were all added as footnote
+anchors, along with "extend the block upward from the anchor". The fixtures went 7/7. Run against the
+real NVIDIA FY26 Q3 release: 376 rows → 344, with the whole table following `(A)`/`(B)` on page 8 and
+page 9's Q4 outlook table and About NVIDIA section all swallowed as notes. The root cause was
+treating a property of Chinese official forms as universal — "everything below the anchor is a note"
+holds for all 13 Chinese files, but a US release can run "table 1 → its footnote → table 2" down one
+page. Withdrawn.
+
+**2. A relative threshold moves with whatever it is relative to.**
+Taking the page size from a majority vote instead of "whatever the read loop's last page left behind"
+was correct (only page 4 of Apple's FY24 Q4 statements is landscape, which put the whole document on
+landscape paper and broke printing). But once `pageW` was corrected from 792 to 612, the *absolute*
+bar in the `pageW × 0.5` "is this a table" test fell from 396 to 306, so Apple's 370pt (60%-wide)
+total-underlines cleared it and the file was misread as a table: `topY` landed on a totals rule and
+real data rows ("iPad", "Total net sales") were classified as footnotes. Change a quantity others
+depend on, and re-verify every judgement that depends on it.
+
+**3. A number moving the way you hoped is not correctness.**
+The first signal from the above was `noFrame` flipping from true to false, which nearly got taken as
+progress. Only a screenshot showed data rows being filed as notes. When classification logic changes,
+look at the output, not just the counts.
+
+**4. Reading the operator list is cheaper than guessing.**
+Apple's file rendered two heavy black bars that are not in the original. First guess: white strokes —
+that file never emits `setStrokeRGBColor` at all. Second guess: clip paths counted as lines — those
+1,427 were already rejected by the existing size test. The real source was fills: the same spot
+painted twice, once `239,239,239` and once `255,255,255`, as 3.6×14pt rectangles, 126 pairs per page.
+Both guesses cost more time than printing the operator list would have.
 
 ## Considered and not done
 
