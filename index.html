@@ -265,6 +265,7 @@
       <label title="字框先往內縮這麼多才判定壓線；調大只留下壓得深的">容許<input type="number" id="ovTol" value="0.5" min="0" max="6" step="0.25" style="width:3.6em">pt</label>
       <label title="原檔填色亮度 ≥ 此值就算白字（255＝純白）；調低會連淺灰字一起抓">白字門檻<input type="number" id="whThr" value="230" min="128" max="255" step="5" style="width:4em"></label>
       <span class="lbl dyn" id="cmsg"></span>
+      <button id="diagB" title="把這份檔的結構統計（頁數、紙張、框線條數、列數…）複製起來，貼進回報用。只有數字，不含檔案內容">複製診斷資訊</button>
     </section>
   </aside>
   <div id="out"></div>
@@ -290,7 +291,7 @@
 const LANG_KEY='prs:lang';
 let LANG='zh'; try{ LANG=localStorage.getItem(LANG_KEY)==='en'?'en':'zh'; }catch(e){}
 const T=(zh,en)=>LANG==='en'?en:zh;
-const EN={"跳過前面的封面／目次，從這一頁開始讀": "Skip the cover / table of contents and start reading from this page","不分列不分頁，整份原樣攤開，只搬移／編輯文字方塊與線條": "No rows, no pagination — the whole document laid out as-is; just move and edit text boxes and lines","縮放到符合頁寬（對開表算左右兩頁的總寬）": "Zoom to fit page width (spreads count both halves)","縮放到一頁的高度剛好塞進視窗": "Zoom so one page fits the window height","回到原尺寸": "Back to 100%","切換亮色／深色介面（只影響工具列與面板，頁面本身一律白底）": "Toggle light / dark UI (toolbar and panel only — pages stay white)","收合／展開左側設定面板": "Collapse / expand the settings panel","表身上下留白，避免字壓到天地線": "Padding above and below the table body so text does not touch the top/bottom rules","列高再怎麼壓縮都不低於這個值": "Row height never compresses below this value","列高被拉開時，文字落在上下兩列的中間，而不是貼著自己那條基線": "When rows are spread out, centre the text between rows instead of sitting on its own baseline","最後一頁列不滿時，尾端的合計／總計列沉到地線上方，中間留白": "When the last page is not full, sink the trailing total rows onto the bottom rule and leave the gap in the middle","整份套用同一個字型，Windows／Mac 看到的結果就一致；「（原樣）」＝每個字保留原檔字型": "Apply one font to the whole document so Windows and Mac match; \"(as-is)\" keeps each glyph’s original font","所有頁面的列都平均分佈到表身底端": "Spread rows evenly down to the bottom of the table body on every page","把目前每一個分頁點都鎖起來，之後不會被推拉動到": "Lock every current page break so later pushes and pulls cannot move it","解開所有鎖定的分頁點（分頁位置不變）": "Unlock all locked page breaks (positions stay put)","表尾註第一列距地線多遠（只影響註，與上下邊界無關）": "Distance from the bottom rule to the first footnote line (footnotes only, unrelated to margins)","把表尾註整段接起來重新斷行（改完字之後用）；對開表會跨兩張紙接排": "Join the footnote block and re-wrap it (use after editing text); spreads flow across both sheets","把選取的連續列綁成一組，分頁不會拆開": "Bind the selected consecutive rows into one group so a page break cannot split them","解除選取列的群組": "Ungroup the selected rows","取消目前的列選取": "Clear the current row selection","點格子直接改字": "Click a cell to edit its text","表格模式：按住修飾鍵點格子選取；自由編輯：直接選文字方塊。再按對齊鈕": "Table mode: hold the modifier key and click cells; free edit: select text boxes directly. Then press an align button","靠左對齊": "Align left","水平置中": "Centre horizontally","靠右對齊": "Align right","水平均分": "Distribute horizontally","依欄線置中": "Centre between column rules","選到文字方塊才能改": "Available when a text box is selected","選到線條才能改": "Available when a line is selected","選取的線拉到同一個起點（左端／上端），另一端不動": "Move the selected lines to a common start (left / top); the other end stays","選取的線拉到同一個終點（右端／下端），另一端不動": "Move the selected lines to a common end (right / bottom); the other end stays","刪除選取物件（Delete）": "Delete the selected objects (Delete)","復原": "Undo","重做": "Redo","把目前的自由編輯結果存成 .json，之後拖回來就能接著改（不需要原始 PDF）": "Save the current free-edit result as .json; drop it back in later to keep editing (no original PDF needed)","畫出表身上下界（只在畫面上，不會印出來）": "Draw the table body bounds on screen only (never printed)","搜尋文字": "Find text","上一個 (Shift+Enter)": "Previous (Shift+Enter)","下一個 (Enter)": "Next (Enter)","標出被線壓到的字，以及原檔是白字／極淡字（印出來不會有標記）": "Mark glyphs clipped by rules, and text that is white / near-white in the source (marks are not printed)","字框先往內縮這麼多才判定壓線；調大只留下壓得深的": "Shrink the glyph box by this much before testing for clipping; raise it to keep only deep overlaps","原檔填色亮度 ≥ 此值就算白字（255＝純白）；調低會連淺灰字一起抓": "Source fill brightness at or above this counts as white text (255 = pure white); lower it to catch light grey too","檔案": "File","起始頁": "Start page","對開表": "Spread","自由編輯": "Free edit","檢視": "View","符合頁寬": "Fit width","符合頁高": "Fit height","列印 / 存成 PDF": "Print / Save as PDF","版面": "Layout","整份套用": "whole document","邊界 上": "Margin top","下": "bottom","最小列高": "Min row height","文字置中": "Centre text","合計貼地線": "Sink totals to bottom rule","整份字型": "Document font","分頁": "Pagination","🔒 凍結分頁": "🔒 Freeze breaks","🔓 清除鎖定": "🔓 Clear locks","表尾註": "Footnotes","註起始": "Note offset","重排備註": "Re-wrap notes","選取的列": "Selected rows","先在頁面上點選": "click on the page first","組成群組": "Group","解除群組": "Ungroup","取消選取": "Clear selection","編輯文字": "Edit text","對齊": "Align","＋點選格子": " + click cells","選取的物件": "selected objects","文字方塊": "Text box","線條": "Line","字型": "Font","線 長": "Line length","粗": "width","齊頭": "Align starts","齊尾": "Align ends","刪除": "Delete","存檔": "Save","拖曳搬移・線兩端可拉長度・雙擊改字・方向鍵微調（Shift 大步）": "Drag to move · drag a line end to resize · double-click to edit · arrow keys nudge (Shift = bigger step)","畫面": "Screen","不會印出來": "not printed","輔助線": "Guides","檢查": "Check","容許": "Tolerance","白字門檻": "White threshold","把 PDF 拖進來": "Drop a PDF here","或": "or ","點這裡選檔案": "click to choose a file","天地線、欄線、頁首、字型與框線粗細全部從原檔讀出來": "Top/bottom rules, column rules, headers, fonts and line widths all come from the source file","只調整資料列落在哪一頁，版面不動": "Only which page each row lands on changes — the layout does not","只吃文字型 PDF，掃描檔沒有文字圖層。表格需有橫貫全寬的天地線；無框線的純文字文件也可以，邊界改由內容決定。自由編輯的 .json 存檔也可以拖進來。": "Text-based PDFs only — scans have no text layer. Tables need full-width top and bottom rules; borderless plain-text documents also work, with bounds taken from the content. Free-edit .json saves can be dropped in too.","檔案不會上傳，全部在你這台電腦的瀏覽器裡處理。": "Nothing is uploaded — everything runs in the browser on your own machine."};
+const EN={"跳過前面的封面／目次，從這一頁開始讀": "Skip the cover / table of contents and start reading from this page","不分列不分頁，整份原樣攤開，只搬移／編輯文字方塊與線條": "No rows, no pagination — the whole document laid out as-is; just move and edit text boxes and lines","縮放到符合頁寬（對開表算左右兩頁的總寬）": "Zoom to fit page width (spreads count both halves)","縮放到一頁的高度剛好塞進視窗": "Zoom so one page fits the window height","回到原尺寸": "Back to 100%","切換亮色／深色介面（只影響工具列與面板，頁面本身一律白底）": "Toggle light / dark UI (toolbar and panel only — pages stay white)","收合／展開左側設定面板": "Collapse / expand the settings panel","表身上下留白，避免字壓到天地線": "Padding above and below the table body so text does not touch the top/bottom rules","列高再怎麼壓縮都不低於這個值": "Row height never compresses below this value","列高被拉開時，文字落在上下兩列的中間，而不是貼著自己那條基線": "When rows are spread out, centre the text between rows instead of sitting on its own baseline","最後一頁列不滿時，尾端的合計／總計列沉到地線上方，中間留白": "When the last page is not full, sink the trailing total rows onto the bottom rule and leave the gap in the middle","整份套用同一個字型，Windows／Mac 看到的結果就一致；「（原樣）」＝每個字保留原檔字型": "Apply one font to the whole document so Windows and Mac match; \"(as-is)\" keeps each glyph’s original font","所有頁面的列都平均分佈到表身底端": "Spread rows evenly down to the bottom of the table body on every page","把目前每一個分頁點都鎖起來，之後不會被推拉動到": "Lock every current page break so later pushes and pulls cannot move it","解開所有鎖定的分頁點（分頁位置不變）": "Unlock all locked page breaks (positions stay put)","表尾註第一列距地線多遠（只影響註，與上下邊界無關）": "Distance from the bottom rule to the first footnote line (footnotes only, unrelated to margins)","把表尾註整段接起來重新斷行（改完字之後用）；對開表會跨兩張紙接排": "Join the footnote block and re-wrap it (use after editing text); spreads flow across both sheets","把選取的連續列綁成一組，分頁不會拆開": "Bind the selected consecutive rows into one group so a page break cannot split them","解除選取列的群組": "Ungroup the selected rows","取消目前的列選取": "Clear the current row selection","點格子直接改字": "Click a cell to edit its text","表格模式：按住修飾鍵點格子選取；自由編輯：直接選文字方塊。再按對齊鈕": "Table mode: hold the modifier key and click cells; free edit: select text boxes directly. Then press an align button","靠左對齊": "Align left","水平置中": "Centre horizontally","靠右對齊": "Align right","水平均分": "Distribute horizontally","依欄線置中": "Centre between column rules","選到文字方塊才能改": "Available when a text box is selected","選到線條才能改": "Available when a line is selected","選取的線拉到同一個起點（左端／上端），另一端不動": "Move the selected lines to a common start (left / top); the other end stays","選取的線拉到同一個終點（右端／下端），另一端不動": "Move the selected lines to a common end (right / bottom); the other end stays","刪除選取物件（Delete）": "Delete the selected objects (Delete)","復原": "Undo","重做": "Redo","把目前的自由編輯結果存成 .json，之後拖回來就能接著改（不需要原始 PDF）": "Save the current free-edit result as .json; drop it back in later to keep editing (no original PDF needed)","畫出表身上下界（只在畫面上，不會印出來）": "Draw the table body bounds on screen only (never printed)","搜尋文字": "Find text","上一個 (Shift+Enter)": "Previous (Shift+Enter)","下一個 (Enter)": "Next (Enter)","標出被線壓到的字，以及原檔是白字／極淡字（印出來不會有標記）": "Mark glyphs clipped by rules, and text that is white / near-white in the source (marks are not printed)","字框先往內縮這麼多才判定壓線；調大只留下壓得深的": "Shrink the glyph box by this much before testing for clipping; raise it to keep only deep overlaps","原檔填色亮度 ≥ 此值就算白字（255＝純白）；調低會連淺灰字一起抓": "Source fill brightness at or above this counts as white text (255 = pure white); lower it to catch light grey too","檔案": "File","起始頁": "Start page","對開表": "Spread","自由編輯": "Free edit","檢視": "View","符合頁寬": "Fit width","符合頁高": "Fit height","列印 / 存成 PDF": "Print / Save as PDF","版面": "Layout","整份套用": "whole document","邊界 上": "Margin top","下": "bottom","最小列高": "Min row height","文字置中": "Centre text","合計貼地線": "Sink totals to bottom rule","整份字型": "Document font","分頁": "Pagination","🔒 凍結分頁": "🔒 Freeze breaks","🔓 清除鎖定": "🔓 Clear locks","表尾註": "Footnotes","註起始": "Note offset","重排備註": "Re-wrap notes","選取的列": "Selected rows","先在頁面上點選": "click on the page first","組成群組": "Group","解除群組": "Ungroup","取消選取": "Clear selection","編輯文字": "Edit text","對齊": "Align","＋點選格子": " + click cells","選取的物件": "selected objects","文字方塊": "Text box","線條": "Line","字型": "Font","線 長": "Line length","粗": "width","齊頭": "Align starts","齊尾": "Align ends","刪除": "Delete","存檔": "Save","拖曳搬移・線兩端可拉長度・雙擊改字・方向鍵微調（Shift 大步）": "Drag to move · drag a line end to resize · double-click to edit · arrow keys nudge (Shift = bigger step)","複製診斷資訊": "Copy diagnostics", "把這份檔的結構統計（頁數、紙張、框線條數、列數…）複製起來，貼進回報用。只有數字，不含檔案內容": "Copies this file's structural stats (pages, paper size, rule counts, row counts…) for a bug report. Numbers only — no document content", "畫面": "Screen","不會印出來": "not printed","輔助線": "Guides","檢查": "Check","容許": "Tolerance","白字門檻": "White threshold","把 PDF 拖進來": "Drop a PDF here","或": "or ","點這裡選檔案": "click to choose a file","天地線、欄線、頁首、字型與框線粗細全部從原檔讀出來": "Top/bottom rules, column rules, headers, fonts and line widths all come from the source file","只調整資料列落在哪一頁，版面不動": "Only which page each row lands on changes — the layout does not","只吃文字型 PDF，掃描檔沒有文字圖層。表格需有橫貫全寬的天地線；無框線的純文字文件也可以，邊界改由內容決定。自由編輯的 .json 存檔也可以拖進來。": "Text-based PDFs only — scans have no text layer. Tables need full-width top and bottom rules; borderless plain-text documents also work, with bounds taken from the content. Free-edit .json saves can be dropped in too.","檔案不會上傳，全部在你這台電腦的瀏覽器裡處理。": "Nothing is uploaded — everything runs in the browser on your own machine."};
 const origText=new Map();
 const tr = s => { const t=s.trim(); const e=EN[t]; return t&&e!==undefined ? s.replace(t,e) : s; };
 function applyLang(){
@@ -343,7 +344,7 @@ const avgPg=new Set();        // 要平均列高的頁（非最後一頁本來�
 const locks=new Set();        // 鎖住的分頁點，以「第幾個 unit 之後斷頁」記，不受其他頁增減影響
 let W=595,pageW=595,H=842, frame=[], frames=[], head=[], note=[], rows=[], units=[], breaks=[], PADT=2, PADB=2, NOTEY=0, topY=0, bodyTop=0, bodyBot=800, bottomY=800, pgBots=[], fillY=800, LH=7, perPage=1;
 // 這份是非表格型（純文字內文）嗎：決定 render() 要等高排列還是保留原檔列距
-let noFrameDoc=false;
+let noFrameDoc=false, mixedSize=0, loadWarn=[];
 const sel=new Set();
 
 let buf=null;
@@ -404,14 +405,15 @@ async function load(){
   if(freeMode.checked) return loadFree(doc);
   // 對開：奇數頁是左半、偶數頁是右半，兩頁併成一個「版」（右半的 x 平移一個頁寬）
   const N = spread.checked ? 2 : 1;
-  const all=[], pgBot=[], frs=[];
+  const all=[], pgBot=[], frs=[], sizes=[];
   // 起始頁：封面／目次跟內文是兩種版面，混在一起讀會用目次的表格線去框內文
   const P0 = Math.min(Math.max(1, +fromPg.value||1), doc.numPages);
   for(let p=P0;p<=doc.numPages;p+=N){
     let txt=[], fr=[];
     for(let k=0;k<N && p+k<=doc.numPages;k++){
       const pg=await doc.getPage(p+k), vp=pg.getViewport({scale:1});
-      pageW=vp.width; H=vp.height;
+      pageW=vp.width; H=vp.height;                    // 抽字／抽線要用這一頁自己的高度翻 y
+      sizes.push(pageW+'x'+H);
       const dx=k*pageW;
       const c=await pg.getTextContent();
       await pg.getOperatorList();          // 跑過才會把字型載進 commonObjs，粗體資訊在那裡
@@ -420,10 +422,17 @@ async function load(){
       fr.push(...(await getFrame(pg,H)).map(l=>({...l, x:l.x+dx})));
     }
     W = pageW*N;
-    if(p===P0) frame=fr;
     // 每頁的地線各自量：末頁常把地線往上收，好在下面空出表尾註的位置
     all.push(merge(txt)); pgBot.push(spanning(fr).pop()); frs.push(fr);
   }
+  // 版面尺寸取多數決。原本是迴圈跑完留下的「最後一頁」，一份直式報告夾一張橫式大表
+  // （Apple FY24Q4 第 4 頁 792×612、其餘 612×792）就會整份被排到橫式紙上，@page 是
+  // 全域的，列印直接錯。全部同尺寸時多數決＝最後一頁，行為不變。
+  const sizeN = {}; sizes.forEach(k=>sizeN[k]=(sizeN[k]||0)+1);
+  const domSize = Object.keys(sizeN).sort((a,b)=>sizeN[b]-sizeN[a])[0];
+  [pageW, H] = domSize.split('x').map(Number);
+  W = pageW*N;
+  mixedSize = Object.keys(sizeN).length>1 ? Object.keys(sizeN).length : 0;
   // 欄線 x 相同的頁共用同一份框線。一般連續表整份只有一種；對開表用單頁模式開會有兩種
   // （左半欄線 254/368/473/577、右半 135/240/345/450），共用首頁那份就字線對不上。
   // 不逐頁各畫自己那份——原檔地線常有幾 pt 的抖動（固資成本效益 783～788），會在頁間跳。
@@ -431,7 +440,17 @@ async function load(){
   // 不能只問「有沒有水平線」——內文頁常有一條短底線（實測 x=43 w=144），
   // 而 spanning() 是拿線自己的左右界當基準，單獨一條短線會被當成「全寬」。
   // 門檻用 pageW 不是 W：對開時 W 是兩頁寬，全寬線只跨其中半邊。
-  const noFrame = noFrameDoc = new Set(frame.filter(l=>!l.h && l.w > pageW*.5).map(l=>Math.round(l.y))).size < 2;
+  // 門檻 0.8：實測各檔真正的天地線佔頁寬 85～92%（中文 13 檔 91.9%、英文樣本 90.2%、
+  // NVIDIA 新聞稿 85.3%），而美國財報那種「合計底下的短底線」是 60.4%（Apple FY24Q4）。
+  // 原本 0.5 只夠濾掉內文頁的單條短底線（實測 24%），會把 60% 的合計底線當成天地線——
+  // 於是 Apple 那份被誤判成表格，topY 取到合計線上，真的資料列反而被歸成表尾註。
+  const SPAN = .8;
+  const spanN = f => new Set(f.filter(l=>!l.h && l.w > pageW*SPAN).map(l=>Math.round(l.y))).size;
+  // 框線基準原本寫死第一頁，但封面／目次那種沒有框線的頁會讓整份被判成無框線文件，
+  // 表尾註機制（第一個條件就是 !noFrame）整組關掉。改成往後找第一頁真的有框線的。
+  // 首頁本來就有框線時 find 回傳的就是首頁，行為不變。
+  frame = frs.find(f=>spanN(f)>=2) || frs[0] || [];
+  const noFrame = noFrameDoc = spanN(frame) < 2;
   const canon = new Map();
   frames = noFrame ? frs : frs.map(f => {
     // 有半邊完全沒線的（對開表頁數是奇數時，末版只有左半）沿用首版框線——
@@ -518,6 +537,14 @@ async function load(){
   });
   // 多表文件（封面＋目次＋多張表）也是文字型、也有全寬橫線，錯誤訊息若只講那兩點會把人帶錯方向。
   // 這種檔的特徵是 sep 切太前面、幾乎整份被判成表尾註（OECD 300 頁實測 note=8757、表身 0 列）。
+  // 不擋，只提醒：無框線文件是刻意支援的（純文字內文），但 10-K／年報那種多節報告
+  // 也會落在這條路上，安靜地攤成幾千個假列。把判斷依據講出來讓使用者自己認。
+  loadWarn = [];
+  if(mixedSize) loadWarn.push(T(`這份混了 ${mixedSize} 種頁面尺寸，版面與列印一律用最多頁的那一種`,
+                                `${mixedSize} different page sizes in this file; layout and printing use the most common one`));
+  if(noFrame && doc.numPages-P0+1 >= 10)
+    loadWarn.push(T(`沒有橫貫全寬的天地線，改用無框線模式排版；若這是多節的報告（10-K、年報）而不是單一張表，結果不會有意義`,
+                    `No full-width top/bottom rules — laid out in borderless mode. If this is a multi-section report (a 10-K or annual report) rather than one table, the result will not be meaningful`));
   const nNote = note.reduce((a,p)=>a+p.length,0);
   if(!rows.length){ fail(nNote>50
     ? T(`找不到表身資料列（地線以下被判成註的有 ${nNote} 列）。這份看起來不是單一連續表格，請先切出單一張表再試。`,
@@ -823,7 +850,8 @@ function capEnds(ls){
 function status(){
   msg.textContent=T(`${nlines(0,units.length)} 列 / 每頁上限 ${perPage} 列`,`${nlines(0,units.length)} rows / max ${perPage} per page`)
     + (sel.size?T(`　已選 ${sel.size} 列`,` · ${sel.size} rows selected`):'')
-    + (selSeg.size?T(`　已選 ${selSeg.size} 格`,` · ${selSeg.size} cells selected`):'');
+    + (selSeg.size?T(`　已選 ${selSeg.size} 格`,` · ${selSeg.size} cells selected`):'')
+    + (loadWarn.length?'　⚠ '+loadWarn.join('　⚠ '):'');
   bu.disabled=!undoS.length; br.disabled=!redoS.length;
   // 全部頁面那顆是切換鈕，名稱要跟著現在的狀態走
   const allOn = breaks.length && avgPg.size>=breaks.length;
@@ -1224,6 +1252,24 @@ const markPale = (rows,ps) => { ps.forEach(x=>paleV.push(x.lt));
 
 let chkOn=false;
 ovTol.oninput = whThr.oninput = () => chkOn && scan();
+// 全部在本機跑、什麼都不上傳，所以拿不到「使用者實際丟了什麼檔」。折衷：讓使用者自己
+// 複製一行結構統計去回報。只有數字與尺寸，不含任何原檔文字。
+diagB.onclick = async () => {
+  if(!units.length && !fpages.length) return;
+  const spanN = frame.filter(l=>!l.h && l.w > pageW*.8).length;
+  const d = [
+    `pages=${breaks.length}`, `paper=${pageW}x${H}${mixedSize?`(mixed:${mixedSize})`:''}`,
+    `spread=${spread.checked?1:0}`, `fromPg=${fromPg.value}`,
+    `frameLines=${frame.length}`, `spanning=${spanN}`, `noFrame=${noFrameDoc?1:0}`,
+    `rows=${rows.length}`, `units=${units.length}`,
+    `notes=${note.reduce((a,p)=>a+p.length,0)}`, `head=${head.reduce((a,p)=>a+p.length,0)}`,
+    `LH=${LH.toFixed(1)}`, `top=${Math.round(topY)}`, `bot=${Math.round(bottomY)}`,
+    `warn=${loadWarn.length}`
+  ].join(' ');
+  try{ await navigator.clipboard.writeText(d); cmsg.textContent=T('已複製','Copied'); }
+  catch(e){ cmsg.textContent=d; }                 // 剪貼簿被擋就直接印出來讓人自己選取
+  setTimeout(()=>{ if(cmsg.textContent===T('已複製','Copied')) cmsg.textContent=''; }, 2000);
+};
 function chk(){ chkOn=!chkOn; document.body.classList.toggle('chk',chkOn); chkB.classList.toggle('pri',chkOn); scan(); }
 function scan(){
   out.querySelectorAll('.ovl').forEach(e=>e.classList.remove('ovl'));

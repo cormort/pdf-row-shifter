@@ -51,6 +51,14 @@ The choice is remembered in `localStorage`.
 - **Faithful reproduction**: the source file's bold, font family (Chinese in a gothic face, numbers in
   Times) and rule widths are kept; text is positioned from a measured baseline and corrected against
   the source widths, so it never runs over a column rule.
+- **Mixed page sizes**: when one file mixes portrait and landscape, layout and printing use whichever
+  size most pages have, and the status bar says so. (It previously used whatever the last page of the
+  read loop left behind — only page 4 of Apple's FY24 Q4 statements is landscape, which put the whole
+  document on landscape paper and broke printing.)
+- **Copy diagnostics**: copies this file's structural stats (pages, paper size, rule counts,
+  `noFrame`, row and note counts…) as one line to paste into a bug report. **Numbers only, no
+  document content** — everything runs locally and nothing is uploaded, and this is what can be
+  collected without changing that.
 - **Output**: the browser's "Print / Save as PDF", with the paper size taken from the source PDF and
   no margins.
 
@@ -77,6 +85,21 @@ following must hold:
 | A rectangle counts as a line only if its short side is ≤ 2pt | Both sides > 2 means a filled block, discarded | 34 filled blocks dropped (44×17, 143×16), all fills |
 | Merge only when thicknesses touch / overlap and the lengths intersect | Two touching 1pt lines merge into one 2pt line | assumes the width is correct |
 | A spanning line must cover 90% of the table width | Used to pin down the top/bottom rules and the header cut | held for all 13 files; the fallback was never used |
+| Deciding "is this a table at all" needs a horizontal over 80% of the page width | Below that, the borderless path is taken | see below |
+
+**The "is this a table" threshold is 80% of the page width, not 50%**: measured across the corpus,
+genuine top/bottom rules run 85–92% of the page width (91.9% across the 13 Chinese files, 90.2% in
+the English fixtures, 85.3% in NVIDIA's release), while a US filing's "underline beneath the totals"
+is 60.4% (Apple FY24 Q4). The threshold used to be 50%, which was only ever meant to reject a body
+page's single short underline (24% when measured); once page size became a majority vote, `pageW`
+dropped from 792 to 612 and those 60% total-underlines cleared the 50% bar, so Apple's file was
+misread as a table — `topY` landed on a totals rule and real data rows ("iPad", "Total net sales")
+were classified as footnotes. At 80% both sides have margin.
+
+**The rule baseline comes from the first page that actually has rules**, not from page one: a cover
+or contents page without rules made the whole file count as borderless, which switches footnote
+detection off entirely (it is gated on `!noFrame`). When page one does have rules, that is still what
+gets picked, and all 13 Chinese files are unchanged.
 
 **Rules are per page, not one set for the whole document**: originally only the first page's set was
 read and the same coordinates drawn on every page. Open a spread in single-page mode and the two
@@ -297,11 +320,11 @@ blocked with a message.
   horizontals — US tables use short underlines beneath column groups and totals rather than a box.
   Footnote detection is gated on `!noFrame`, so those three never reach the note logic at all, and the
   93-page 10-K flattens into 3,632 meaningless "rows". Such documents are outside what this tool is
-  for (a single continuous table) — but it currently says nothing and quietly returns nonsense.
-- **A cover or contents page with no rules makes the whole file count as "borderless"**, which turns
-  footnote detection off entirely (`noFrame` looks for two or more full-width horizontals on the
-  first page). Skipping the cover with "Start page" fixes it — measured on a 3-page 10-K style
-  fixture, start page 1 left all 6 note lines as data rows; start page 2 classified all 6 correctly.
+  for (a single continuous table); it now at least says so in the status bar.
+- **Rules the source draws but never shows come out black.** Line extraction does not track stroke
+  colour (white *text* is handled, white *lines* are not). Measured on Apple's FY24 Q4 statements:
+  126 zero-width vertical segments of about 14pt each stack up at x=366, invisible in the source and
+  a solid black bar here. Not yet addressed.
 - When one file holds several tables with different columns (e.g. `綜計-OF-01` contains 4), rules
   are drawn per page, but **rows cannot be pushed across tables** — text x positions do not follow the
   new table, so a pushed row lands in the wrong columns. Split out a single table first.
