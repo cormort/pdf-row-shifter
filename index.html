@@ -477,31 +477,20 @@ async function load(){
   // 英文文件的錨點要跟冒號／句點（Note:、Notes.、* Source:），不然財報常見的
   // 「Notes payable」這種資料列會被整段當成註吃掉；中文的「註」開頭本來就夠罕見。
   const NOTE_RE = /^\s*(註|附註|說明|\*\s*(Notes?|Sources?)\b|(Notes?|Sources?)\s*[:：.])/i;
-  // 這份有中文字嗎。有的話一律走上面那條原本的規則——下面整段英文專用的邏輯不啟用，
-  // 中文檔的判定結果與加這段之前逐位元相同（不是靠測出來沒差，是走不到）。
+  // 這份有中文字嗎。有的話一律走上面那條原本的規則，中文檔的判定與這段加入前逐位元相同。
   const docCJK = all.some(pg=>pg.some(r=>/[\u4e00-\u9fff]/.test(r.map(s=>s.t).join(''))));
-  // 真實 10-K 的註區塊常常整段在地線上方（幾何切不開），且第一行是 (1)／(c)／* 這類標記，
-  // 「See accompanying notes…」反而在最後一行。只認最後那句的話前面幾行仍是資料列，
-  // 所以錨點先確認「這頁有註區塊」，再從它往上吸收連續的註行。
-  const EN_ANCHOR = /^\s*(\*{1,2}|[†‡]|\(\d{1,2}\)|\([a-z]\)|(see|the)\s+accompanying\b|(Notes?|Sources?)\s*[:.])/i;
-  // 往上吸收的條件：也是註的長相，而且右邊沒有金額欄——B.pdf 的「(2) Segment detail」
-  // 是有金額的真資料列，這一項把它擋掉。
-  const noAmount = r => !/^[($]?[\d,.]+\)?$/.test((r[r.length-1].t||'').trim());
-  const anchorY = pg => {
-    const cand = pg.filter(r=>r.y>H*.6 && (docCJK ? NOTE_RE.test(r[0].t)
-                                                  : EN_ANCHOR.test(r.map(s=>s.t).join(' ')) && noAmount(r)));
-    if(!cand.length) return Infinity;
-    let y = Math.min(...cand.map(r=>r.y));
-    if(docCJK) return y;
-    // 由錨點往上，把緊鄰的註行一起收進來（碰到有金額的列就停）
-    const above = pg.filter(r=>r.y<y && r.y>H*.6).sort((a,b)=>b.y-a.y);
-    for(const r of above){
-      if(!EN_ANCHOR.test(r.map(s=>s.t).join(' ')) || !noAmount(r)) break;
-      y = r.y;
-    }
-    return y;
-  };
-  const nfOwn = all.map(anchorY);
+  // 英文只多收「See/The accompanying notes…」這一句（審計財報的固定句，且一定是該頁最後一行）。
+  //
+  // 這裡刻意不收 (1)／(a)／單獨的 *／† 當錨點，也不做「從錨點往上吸收」：
+  // 「錨點以下到頁尾都是註」這個前提是中文公文表的性質（13 份實測皆成立），
+  // 但美國的財報新聞稿一頁裡可以是「表一 → 表一的註 → 表二」。實測 NVIDIA
+  // FY26Q3 新聞稿：放寬成 (A)/(B) 也算錨點時，第 8 頁的 (A)(B) 之後整張表、
+  // 第 9 頁的 Q4 Outlook 表與 About NVIDIA 全被當成註吃掉（376 列 → 344 列）。
+  // 要支援那種版型得先能判斷「註區塊在哪裡結束」，目前沒有足夠的真實樣本可以定這條界線。
+  const EN_NOTE_RE = /^\s*((Notes?|Sources?)\s*[:.]|\*\s*(Notes?|Sources?)\b|(see|the)\s+accompanying\s+notes?\b)/i;
+  const nfOwn = all.map(pg=>Math.min(...pg.filter(r=>r.y>H*.6 &&
+      (docCJK ? NOTE_RE : EN_NOTE_RE).test(docCJK ? r[0].t : r.map(s=>s.t).join(' ')))
+    .map(r=>r.y), Infinity));
   const nfEff = [];
   for(let i=0;i<all.length;i++)
     nfEff[i] = nfOwn[i]<Infinity ? {v:nfOwn[i], carr:false}

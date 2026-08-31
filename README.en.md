@@ -144,20 +144,27 @@ English documents use a second set of anchors, enabled **only when the file cont
 all** — with any Chinese present the original rule above applies unchanged, so Chinese files take the
 identical code path they did before this existed.
 
-The English anchors are `(1)`, `(a)`, `*`, `**`, `†`, `See accompanying…`, `Note:` and `Source:`, and
-the block **extends upward** from the anchor: a real 10-K's note block often opens with `(1) …` and
-keeps `See accompanying notes…` for the last line, so matching only that last line would leave the
-rows above it as data. Upward extension stops at the first line that either does not look like a note
-or carries an amount in the right-hand column — which is what keeps `(2) Segment detail` a data row.
+The English anchors are only `Note:`, `Notes:`, `Source:` and `See/The accompanying notes…`.
+
+**`(1)`, `(a)`, a bare `*` and `†` are deliberately not anchors, and there is no upward extension from
+the anchor** — both were built and then withdrawn when a real file broke them. "Everything below the
+anchor is a note" is a property of Chinese official forms (it holds across all 13), but a US earnings
+release can run "table 1 → table 1's footnote → table 2" down one page. Measured on NVIDIA's FY26 Q3
+release: with `(A)`/`(B)` accepted as anchors, the whole table following them on page 8, plus page 9's
+Q4 outlook table and the About NVIDIA section, were all swallowed as notes (376 rows → 344). Supporting
+that layout means being able to tell where a note block *ends*, and there is not enough real material
+to draw that line yet — better to under-detect than to eat data.
 
 For `Note:`, `Notes:` and `Source:` the **colon or full stop is required**: `Notes payable to …` is a genuine data row in plenty of
 financial tables, and without that constraint everything from it down would be swallowed as a note.
 The Chinese 註 is rare enough as a row opener that it needs no such guard.
 
-Verified against 7 English fixtures (10-K primary statement, sell-side research table, earnings deck,
-symbol footnotes, mixed, a no-footnote control, and a 10-K lookalike): note text matched word for
-word, data row counts matched exactly, and none of the 7 trap rows was swallowed. The 13 Chinese
-files show zero change in either single-page or spread mode.
+Verified against 7 English fixtures: 6 of them (10-K primary statement, sell-side research table,
+earnings deck, symbol footnotes, mixed, and a no-footnote control) matched word for word on note text
+and exactly on data row counts, with none of the trap rows swallowed. The 7th (a 10-K lookalike whose
+note block opens with `(1)`) picks up only the closing `See accompanying…` line — a known, deliberate
+trade-off, see above. The 13 Chinese files show zero change in either mode, and NVIDIA's FY26 Q3
+release is byte-identical to before English support existed (376 rows / 0 notes).
 
 **Why not a global y band**: the notes' y positions look fixed, but the note bands of
 `OF-06-固資成本效益` (notes start at 712.8) and `OF-07-長債` (690) contain hundreds
@@ -284,6 +291,13 @@ blocked with a message.
   character in the source and has to be edited character by character.
 - Rule detection assumes the table has full-width top and bottom rules; unusual layouts may need
   adjustment.
+- **Most US financial documents have no full-width rules at all, so they take the "borderless" path.**
+  Measured on four official files (Apple's FY24 Q4 consolidated statements, NVIDIA's FY26 10-K,
+  NVIDIA's FY26 Q3 release, and the US Treasury's FRUSG 2024): **three** of them have 0–1 full-width
+  horizontals — US tables use short underlines beneath column groups and totals rather than a box.
+  Footnote detection is gated on `!noFrame`, so those three never reach the note logic at all, and the
+  93-page 10-K flattens into 3,632 meaningless "rows". Such documents are outside what this tool is
+  for (a single continuous table) — but it currently says nothing and quietly returns nonsense.
 - **A cover or contents page with no rules makes the whole file count as "borderless"**, which turns
   footnote detection off entirely (`noFrame` looks for two or more full-width horizontals on the
   first page). Skipping the cover with "Start page" fixes it — measured on a 3-page 10-K style
