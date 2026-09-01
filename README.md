@@ -1,6 +1,10 @@
 # PDF 資料列分頁調整
 
-*[English](README.en.md)*
+<p align="center">
+  <a href="https://cormort.github.io/pdf-row-shifter/"><img alt="線上版" src="https://img.shields.io/badge/DEMO-cormort.github.io-yellow?style=for-the-badge"></a>
+  <a href="#"><img alt="License" src="https://img.shields.io/badge/LICENSE-MIT-green?style=for-the-badge"></a>
+  <a href="README.en.md"><img alt="English" src="https://img.shields.io/badge/LANG-English-blue?style=for-the-badge"></a>
+</p>
 
 瀏覽器裡直接調整 PDF 表格的分頁位置，不用重排原始文件。單一 HTML 檔，開了就能用。
 
@@ -292,3 +296,13 @@ Apple 那份畫面上有兩條原檔沒有的粗黑柱。先猜是「白色描�
 `bodyBot` / `botLimit` / 註 / 合計貼地線這四個共用同一下限的機制打架。
 
 MIT
+
+## 關鍵字 / Keywords
+
+PDF 表格分頁、PDF 表格編輯、PDF 分頁調整、資料列搬移、跨頁表格、表尾註、備註重排、
+框線偵測、對開表、A4 列印、存成 PDF、公文表、財報表格、瀏覽器離線處理、pdf.js、單一 HTML 檔
+
+PDF table pagination, PDF table editor, row shifter, move rows across pages, page break
+adjustment, table footnotes, footnote reflow, table border detection, two-up spread layout,
+A4 print, print to PDF, financial statements, client-side, offline, browser-only, pdf.js,
+single-file HTML tool
