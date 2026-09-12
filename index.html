@@ -503,7 +503,14 @@ addEventListener('drop', e=>e.preventDefault());
 // 切換對開要重新解析原檔，推拉／群組／鎖定／改字全部歸零，undo 也救不回來（load() 會清空 undoS）。
 // 沒動過就不打擾：undoS 為空代表本來就沒東西可丟。
 // 起始頁跟對開一樣要重讀原檔，改動同樣會被清掉
-fromPg.onchange = () => { if(buf) queueLoad(); };
+let fromPg0=fromPg.value;           // 使用者不要清掉時，把欄位退回上一個值
+fromPg.onchange = () => {
+  if(undoS.length && !confirm(T('改起始頁會重新載入原檔，目前的推拉／群組／鎖定／改字都會清掉。要繼續嗎？',
+      'Changing the start page reloads the source file — the pushes, groups, locks and text edits you have made will be discarded. Continue?')))
+    return fromPg.value=fromPg0;
+  fromPg0=fromPg.value;
+  buf && queueLoad();
+};
 spread.onchange = () => {
   if(undoS.length && !confirm(T('切換對開表會重新載入原檔，目前的推拉／群組／鎖定／改字都會清掉。要繼續嗎？',
       'Switching spread mode reloads the source file — the pushes, groups, locks and text edits you have made will be discarded. Continue?')))
@@ -941,8 +948,11 @@ function restore(s){ units=s.u; breaks=s.b; head=s.h; note=s.n;
   locks.clear(); s.l.forEach(b=>locks.add(b)); sel.clear(); render(); }
 function undo(){ if(!undoS.length) return; redoS.push(snap()); restore(undoS.pop()); }
 function redo(){ if(!redoS.length) return; undoS.push(snap()); restore(redoS.pop()); }
+// 焦點在輸入框／編輯中的格子時，⌘Z 是還原那格的打字，不該把整份版面倒回去
+const inField = () => { const a=document.activeElement;
+  return !!a && (a.isContentEditable || /INPUT|SELECT|TEXTAREA/.test(a.tagName)); };
 onkeydown = e => {
-  if(!(e.metaKey||e.ctrlKey) || e.key.toLowerCase()!=='z') return;
+  if(!(e.metaKey||e.ctrlKey) || e.key.toLowerCase()!=='z' || inField()) return;
   e.preventDefault(); e.shiftKey ? redo() : undo();
 };
 
@@ -1000,15 +1010,18 @@ function status(){
 
 // 文字在 PDF 裡是以「基線」定位，但 CSS 的 top 是行框上緣，兩者相差多少要看實際字型的
 // ascent，猜不得（Times 0.89、正黑 1.08）。實地量一次每種字型組合，之後直接換算。
+// 快取的鍵要帶「實際量到的字型」：ascent 取決於 segFont() 的結果，而它看的是
+// fontAll（整份字型）與 s.f（自由編輯換的字型），不是只有原檔字型名。
+// 少了這兩個，換字型之後會拿舊字型的 ascent 去擺新字型的字，整份基線偏掉。
 const bo={};
-function baseOff(sz,bold,serif,sf){
-  const k=`${sz}|${bold}|${serif}|${sf||''}`;
+function baseOff(s0){
+  const ff=segFont(s0)||'';
+  const k=`${s0.sz}|${s0.b?1:0}|${s0.s?1:0}|${ff}`;
   if(bo[k]!=null) return bo[k];
-  const p=document.createElement('span');
+  const sz=s0.sz, p=document.createElement('span');
   p.className='seg';                       // 一定要用跟正文相同的字型來量，否則 ascent 會不一樣
-  const ff=segFont({sz, b:bold, s:serif, sf})||'';
   p.style.cssText=`position:absolute;visibility:hidden;white-space:pre;font-size:${sz}pt;line-height:${sz}pt`
-    +(bold?';font-weight:700':'')+(ff?';font-family:'+ff:'');
+    +(s0.b?';font-weight:700':'')+(ff?';font-family:'+ff:'');
   p.textContent='X';
   const s=document.createElement('span');
   s.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline';
@@ -1214,7 +1227,7 @@ const mEl=document.createElement('span');
 mEl.className='seg'; mEl.style.cssText='visibility:hidden;left:0;top:0';
 const mCache=new Map();
 function textW(t,s){
-  const k=`${s.sz}|${s.b?1:0}|${s.s?1:0}|${s.sf||''}|${t}`;
+  const k=`${s.sz}|${s.b?1:0}|${s.s?1:0}|${segFont(s)||''}|${t}`;
   if(mCache.has(k)) return mCache.get(k);
   mEl.style.fontSize=mEl.style.lineHeight=s.sz+'pt';
   mEl.style.fontWeight=s.b?'700':'';
@@ -1314,7 +1327,8 @@ function reflow(blk){
   return out;
 }
 
-const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;');
+// 文字節點與屬性值都用它，所以雙引號一起跳脫（原檔字型名帶引號會把 data-sf 屬性提前收掉）
+const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
 // Shift+Enter 換行：contentEditable 預設會塞 <br>／<div>，取 textContent 時就沒了換行。
 // .seg 是 white-space:pre，自己插一個換行字元最單純，存回資料也直接帶著 \n。
 function insertNL(){
@@ -1333,8 +1347,8 @@ function segs(r, top, rel, pgno, dy=0, path='', half=0){
   // 基準＝列內字級最大的那段（通常是最左的中文）。同字級同字體的列位置不變。
   // 只調表身列，頁首／表尾註照原檔。
   const ref = vmid.checked && rel ? r.reduce((a,s)=>s.sz>a.sz?s:a) : null;
-  const cen = ref && baseOff(ref.sz,ref.b,ref.s,ref.sf)-ref.sz/2;
-  const off = s => ref ? cen+s.sz/2 : baseOff(s.sz,s.b,s.s,s.sf);
+  const cen = ref && baseOff(ref)-ref.sz/2;
+  const off = s => ref ? cen+s.sz/2 : baseOff(s);
   // 地線以下（頁尾）孤立的純數字視為頁碼，換成新頁次（對開時左右各自算）
   const pn=s=>pgno&&r.y>bottomY&&r.length<=2&&/^\d+$/.test(s.t);
   const txt=s=>pn(s) ? String(pgno+Math.floor(s.x/pageW)) : s.t;
@@ -1770,7 +1784,7 @@ function freeFromLayout(){
       const b=st.fontWeight==='700'?1:0, s=/serif/.test(st.fontFamily)?1:0;
       // 表身的字包在 .row 裡、top 是相對列的，要加上列本身的位置；頁首與註直接掛在頁上
       const par=e.parentElement, dy=par.classList.contains('row')?parseFloat(par.style.top):0;
-      const o={ x:parseFloat(st.left), y:parseFloat(st.top)+dy+baseOff(sz,b,s,e.dataset.sf||''),  // 存回基線（ftop 會再減一次）
+      const o={ x:parseFloat(st.left), y:parseFloat(st.top)+dy+baseOff({sz, b, s, sf:e.dataset.sf||''}),  // 存回基線（ftop 會再減一次）
                 t:e.textContent, sz, b, s, sf:e.dataset.sf||'', w:+e.dataset.w||0 };
       if(e.dataset.lt) o.hid=+e.dataset.lt;
       return o;
@@ -1830,7 +1844,7 @@ async function loadFree(doc){
 }
 
 const fobj = id => { const [k,p,i]=id.split(','); return k==='l' ? fpages[p].l[i] : fpages[p].t[i]; };
-const ftop = o => o.sz ? o.y-baseOff(o.sz,o.b,o.s,o.sf) : o.y;
+const ftop = o => o.sz ? o.y-baseOff(o) : o.y;
 const fel = id => out.querySelector(`[data-o="${id}"]`);
 
 function renderFree(){
