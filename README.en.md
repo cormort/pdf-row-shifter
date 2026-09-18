@@ -47,8 +47,11 @@ The choice is remembered in `localStorage`.
   of a half-page continues on the next half-page. Use it after editing the text.
 - **Sink totals to bottom rule (on by default)**: when the last page is not full, the trailing run of
   total rows sinks as a block onto the bottom rule and the gap is left in the middle; on the last page
-  the rule's position comes from the footnote block, so the total row ends up right above it. Every
-  other row keeps its position and leading (unlike "even row height", which stretches the whole page).
+  the rule's position comes from the footnote block, so the total row ends up right above it. How much
+  clearance it keeps is set by "Gap above rule" (default: half a row height — about 9pt in these
+  government tables; flush against the bottom margin is only 2pt, with the text almost touching the
+  line; 0 keeps the bottom margin only). Every other row keeps its position and leading (unlike
+  "even row height", which stretches the whole page).
 - **In-place editing**: double-click any cell to edit, Enter to keep, Esc to discard.
 - **Free edit**: no rows, no pagination — the whole document laid out flat, with text boxes and lines
   you can drag, resize and restyle. Ticking it **takes over the layout currently on screen** (page
