@@ -42,9 +42,10 @@ The choice is remembered in `localStorage`.
   longer decides anything, so every document's notes land in the same band; re-wrapping notes into a
   taller block only pushes the rule further up instead of running off the paper. "Note offset" is now a
   fine nudge of the whole block (default 0).
-- **Re-wrap notes**: joins the footnote block and re-breaks the lines — each item number (`1.` `2.`)
-  becomes its own entry, continuation lines align after the number, and text reaching the right edge
-  of a half-page continues on the next half-page. Use it after editing the text.
+- **Re-wrap notes**: re-breaks only the footnote items whose text you edited — each item number becomes
+  its own entry, continuation lines align after the number, and text reaching the right edge of a
+  half-page continues on the next half-page. Untouched items are carried over from the source verbatim,
+  right down to the source's line ends.
 - **Sink totals to bottom rule (on by default)**: when the last page is not full, the trailing run of
   total rows sinks as a block onto the bottom rule and the gap is left in the middle; on the last page
   the rule's position comes from the footnote block, so the total row ends up right above it. How much
@@ -293,16 +294,32 @@ unchanged in row count and layout.
 
 A note is a run of absolutely positioned fragments whose line breaks came from the source file, so
 after you double-click and edit the text, the following text does not reflow — it overlaps the next
-fragment or leaves a hole. `Re-wrap notes` joins the whole block and refills the lines:
+fragment or leaves a hole. `Re-wrap notes` re-breaks **only the item whose text you edited**:
 
+- **Untouched items are left alone**: the whole item is carried over from the source, including its
+  segment widths (`data-w`, which compresses each line back to the width the source printed) and each
+  fragment's own baseline. The reason is that re-wrapping measures widths with the local font, not the
+  one the source used to set that line, so re-wrapping everything drags the untouched line ends along
+  with it. Measured on `OF-05 固資來源` (spread mode), changing one number (`889,563` → `890,123`):
+  the old version re-wrapped the whole block and moved the 「 that starts line 4 of the source onto the
+  end of line 3, with all four lines losing their source widths; re-wrapping only item 1 leaves item 2
+  (two lines, including that 「) byte-identical to the source.
 - **Split on item numbers**: `1.` `2.` are separate fragments in the source, used both to split the
-  items and to pick up the two indents ("number column" and "body column")
+  items and to pick up the two indents ("number column" and "body column"); an item number glued to its
+  text (`2.本年度…`) derives the body column from the width of the number itself, not from the
+  continuation fragment that happens to sit to its right on the same line
 - **Flow across pages**: a spread's note is one line running across both sheets by design, so text
   reaching the right edge of a half-page continues on the next half-page
+- **CJK line-break rules**: a closing mark (`,` `。` `、` `）` `】` …) never starts a line — if it does
+  not fit it hangs at the end of the previous one; an opening mark (`「` `（` `【` …) never ends a line —
+  it is carried to the next line with the following text. Tested on a synthetic string repeated 30
+  times: zero violations at the breaks
 - **Numbers are not split**: a run like `235,229` is one token; only Chinese breaks per character
 - **Width measurement**: measured with a hidden `.seg` whose font and fallback match the screen, and
   removed from the DOM immediately after — an element parked outside the layout still counts toward
   the page width, and Chrome would then shrink the whole document at print time to fit it
+- **Height changes push downwards**: when an item grows or shrinks, the items below it shift as whole
+  blocks, and the last page's bottom rule (= the footnote block's height) is recomputed with them
 
 Two traps found in testing: **not every note spans both pages** (`長債`'s note occupies only
 the left half, and spreading it to two page widths crushes 8 lines into 4), so the source is inspected to
@@ -316,9 +333,10 @@ unchanged, no overflow past the right edge, and "0 glyphs clipped by rules" afte
 a spread in single-page mode is blocked — each note there is only the left or right half of a
 sentence, and joining them is gibberish.
 
-**The cost**: re-wrapped text uses local font widths rather than the source's `data-w`, so line ends
-sit slightly differently from the source (`註：1.` measured about 1.3pt out), and results differ
-slightly between operating systems. Notes you do not re-wrap are entirely unaffected.
+**The cost, now confined to the item you edited**: re-wrapped text uses local font widths rather than
+the source's `data-w`, so its line ends sit slightly differently from the source (`註：1.` measured
+about 1.3pt out) and results differ slightly between operating systems. Items you did not edit, and
+notes you never re-wrapped, are entirely unaffected — the source's widths and coordinates stay.
 
 ## Free edit: the two modes have different data structures
 

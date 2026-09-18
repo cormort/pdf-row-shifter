@@ -410,7 +410,7 @@
 const LANG_KEY='prs:lang';
 let LANG='zh'; try{ LANG=localStorage.getItem(LANG_KEY)==='en'?'en':'zh'; }catch(e){}
 const T=(zh,en)=>LANG==='en'?en:zh;
-const EN={"跳過前面的封面／目次，從這一頁開始讀": "Skip the cover / table of contents and start reading from this page","不分列不分頁，整份原樣攤開，只搬移／編輯文字方塊與線條": "No rows, no pagination — the whole document laid out as-is; just move and edit text boxes and lines","縮放到符合頁寬（對開表算左右兩頁的總寬）": "Zoom to fit page width (spreads count both halves)","縮放到一頁的高度剛好塞進視窗": "Zoom so one page fits the window height","回到原尺寸": "Back to 100%","切換亮色／深色介面（只影響工具列與面板，頁面本身一律白底）": "Toggle light / dark UI (toolbar and panel only — pages stay white)","收合／展開左側設定面板": "Collapse / expand the settings panel","表身上下留白，避免字壓到天地線": "Padding above and below the table body so text does not touch the top/bottom rules","列高再怎麼壓縮都不低於這個值": "Row height never compresses below this value","列高被拉開時，文字落在上下兩列的中間，而不是貼著自己那條基線": "When rows are spread out, centre the text between rows instead of sitting on its own baseline","最後一頁列不滿時，尾端的合計／總計列沉到地線上方，中間留白（預設開：末頁的地線由表尾註決定，合計列就貼在那條線上方）": "When the last page is not full, sink the trailing total rows onto the bottom rule and leave the gap in the middle (on by default: the last page's rule comes from the footnote block, so the total rows end up just above it)","整份套用同一個字型，Windows／Mac 看到的結果就一致；「（原樣）」＝每個字保留原檔字型": "Apply one font to the whole document so Windows and Mac match; \"(as-is)\" keeps each glyph’s original font","所有頁面的列都平均分佈到表身底端": "Spread rows evenly down to the bottom of the table body on every page","把目前每一個分頁點都鎖起來，之後不會被推拉動到": "Lock every current page break so later pushes and pulls cannot move it","解開所有鎖定的分頁點（分頁位置不變）": "Unlock all locked page breaks (positions stay put)","表尾註第一列距地線多遠（只影響註，與上下邊界無關）": "Distance from the bottom rule to the first footnote line (footnotes only, unrelated to margins)","把表尾註整段接起來重新斷行（改完字之後用）；對開表會跨兩張紙接排": "Join the footnote block and re-wrap it (use after editing text); spreads flow across both sheets","把選取的連續列綁成一組，分頁不會拆開": "Bind the selected consecutive rows into one group so a page break cannot split them","解除選取列的群組": "Ungroup the selected rows","取消目前的列選取": "Clear the current row selection","點格子直接改字": "Click a cell to edit its text","表格模式：按住修飾鍵點格子選取；自由編輯：直接選文字方塊。再按對齊鈕": "Table mode: hold the modifier key and click cells; free edit: select text boxes directly. Then press an align button","靠左對齊": "Align left","水平置中": "Centre horizontally","靠右對齊": "Align right","水平均分": "Distribute horizontally","依欄線置中": "Centre between column rules","選到文字方塊才能改": "Available when a text box is selected","選到線條才能改": "Available when a line is selected","選取的線拉到同一個起點（左端／上端），另一端不動": "Move the selected lines to a common start (left / top); the other end stays","選取的線拉到同一個終點（右端／下端），另一端不動": "Move the selected lines to a common end (right / bottom); the other end stays","刪除選取物件（Delete）": "Delete the selected objects (Delete)","復原": "Undo","重做": "Redo","把目前的自由編輯結果存成 .json，之後拖回來就能接著改（不需要原始 PDF）": "Save the current free-edit result as .json; drop it back in later to keep editing (no original PDF needed)","畫出表身上下界（只在畫面上，不會印出來）": "Draw the table body bounds on screen only (never printed)","搜尋文字": "Find text","上一個 (Shift+Enter)": "Previous (Shift+Enter)","下一個 (Enter)": "Next (Enter)","標出被線壓到的字，以及原檔是白字／極淡字（印出來不會有標記）": "Mark glyphs clipped by rules, and text that is white / near-white in the source (marks are not printed)","字框先往內縮這麼多才判定壓線；調大只留下壓得深的": "Shrink the glyph box by this much before testing for clipping; raise it to keep only deep overlaps","原檔填色亮度 ≥ 此值就算白字（255＝純白）；調低會連淺灰字一起抓": "Source fill brightness at or above this counts as white text (255 = pure white); lower it to catch light grey too","檔案": "File","起始頁": "Start page","對開表": "Spread","自由編輯": "Free edit","檢視": "View","符合頁寬": "Fit width","符合頁高": "Fit height","列印 / 存成 PDF": "Print / Save as PDF","版面": "Layout","整份套用": "whole document","邊界 上": "Margin top","下": "bottom","最小列高": "Min row height","文字置中": "Centre text","合計貼地線": "Sink totals to bottom rule","整份字型": "Document font","分頁": "Pagination","🔒 凍結分頁": "🔒 Freeze breaks","🔓 清除鎖定": "🔓 Clear locks","表尾註": "Footnotes","註起始": "Note offset","重排備註": "Re-wrap notes","選取的列": "Selected rows","先在頁面上點選": "click on the page first","組成群組": "Group","解除群組": "Ungroup","取消選取": "Clear selection","編輯文字": "Edit text","對齊": "Align","＋點選格子": " + click cells","選取的物件": "selected objects","文字方塊": "Text box","線條": "Line","字型": "Font","線 長": "Line length","粗": "width","齊頭": "Align starts","齊尾": "Align ends","刪除": "Delete","存檔": "Save","拖曳搬移・線兩端可拉長度・雙擊改字・方向鍵微調（Shift 大步）": "Drag to move · drag a line end to resize · double-click to edit · arrow keys nudge (Shift = bigger step)","複製診斷資訊": "Copy diagnostics", "把這份檔的結構統計（頁數、紙張、框線條數、列數…）複製起來，貼進回報用。只有數字，不含檔案內容": "Copies this file's structural stats (pages, paper size, rule counts, row counts…) for a bug report. Numbers only — no document content", "畫面": "Screen","不會印出來": "not printed","輔助線": "Guides","檢查": "Check","容許": "Tolerance","白字門檻": "White threshold","把 PDF 拖進來": "Drop a PDF here", "調整單一張連續表格的分頁": "Repaginate one continuous table", "——只改哪幾列落在哪一頁，版面不動": " — only which rows land on which page changes; the layout does not", "整本 10-K、年報這類多節文件不適用": "Not for whole 10-Ks, annual reports or other multi-section documents", "用途：調整單一張連續表格的分頁——哪幾列落在哪一頁。\n不適用：整本 10-K、年報、報告書這種多節文件（沒有單一張表可分，會被攤成幾千個無意義的「列」）。\n需要：文字型 PDF（掃描檔沒有文字圖層）。表格最好有橫貫全寬的天地線；沒有框線的純文字文件也能開，邊界改由內容決定。": "What it is for: repaginating one continuous table — which rows land on which page.\nWhat it is not for: a whole 10-K, annual report or other multi-section document (there is no single table to repaginate; it flattens into thousands of meaningless rows).\nWhat it needs: a text-based PDF (scans have no text layer). The table should ideally have full-width top and bottom rules; borderless plain-text documents also open, with bounds taken from the content.","或": "or ","點這裡選檔案": "click to choose a file","天地線、欄線、頁首、字型與框線粗細全部從原檔讀出來": "Top/bottom rules, column rules, headers, fonts and line widths all come from the source file","只調整資料列落在哪一頁，版面不動": "Only which page each row lands on changes — the layout does not","只吃文字型 PDF，掃描檔沒有文字圖層。表格需有橫貫全寬的天地線；無框線的純文字文件也可以，邊界改由內容決定。自由編輯的 .json 存檔也可以拖進來。": "Text-based PDFs only — scans have no text layer. Tables need full-width top and bottom rules; borderless plain-text documents also work, with bounds taken from the content. Free-edit .json saves can be dropped in too.","檔案不會上傳，全部在你這台電腦的瀏覽器裡處理。": "Nothing is uploaded — everything runs in the browser on your own machine.",
+const EN={"跳過前面的封面／目次，從這一頁開始讀": "Skip the cover / table of contents and start reading from this page","不分列不分頁，整份原樣攤開，只搬移／編輯文字方塊與線條": "No rows, no pagination — the whole document laid out as-is; just move and edit text boxes and lines","縮放到符合頁寬（對開表算左右兩頁的總寬）": "Zoom to fit page width (spreads count both halves)","縮放到一頁的高度剛好塞進視窗": "Zoom so one page fits the window height","回到原尺寸": "Back to 100%","切換亮色／深色介面（只影響工具列與面板，頁面本身一律白底）": "Toggle light / dark UI (toolbar and panel only — pages stay white)","收合／展開左側設定面板": "Collapse / expand the settings panel","表身上下留白，避免字壓到天地線": "Padding above and below the table body so text does not touch the top/bottom rules","列高再怎麼壓縮都不低於這個值": "Row height never compresses below this value","列高被拉開時，文字落在上下兩列的中間，而不是貼著自己那條基線": "When rows are spread out, centre the text between rows instead of sitting on its own baseline","最後一頁列不滿時，尾端的合計／總計列沉到地線上方，中間留白（預設開：末頁的地線由表尾註決定，合計列就貼在那條線上方）": "When the last page is not full, sink the trailing total rows onto the bottom rule and leave the gap in the middle (on by default: the last page's rule comes from the footnote block, so the total rows end up just above it)","整份套用同一個字型，Windows／Mac 看到的結果就一致；「（原樣）」＝每個字保留原檔字型": "Apply one font to the whole document so Windows and Mac match; \"(as-is)\" keeps each glyph’s original font","所有頁面的列都平均分佈到表身底端": "Spread rows evenly down to the bottom of the table body on every page","把目前每一個分頁點都鎖起來，之後不會被推拉動到": "Lock every current page break so later pushes and pulls cannot move it","解開所有鎖定的分頁點（分頁位置不變）": "Unlock all locked page breaks (positions stay put)","表尾註第一列距地線多遠（只影響註，與上下邊界無關）": "Distance from the bottom rule to the first footnote line (footnotes only, unrelated to margins)","把改過字的表尾註那一條重新斷行（沒改過的一字不動，連原檔的行尾都留著）；對開表會跨兩張紙接排": "Re-wrap the footnote items whose text you edited (untouched ones stay exactly as in the source); spreads flow across both sheets","把選取的連續列綁成一組，分頁不會拆開": "Bind the selected consecutive rows into one group so a page break cannot split them","解除選取列的群組": "Ungroup the selected rows","取消目前的列選取": "Clear the current row selection","點格子直接改字": "Click a cell to edit its text","表格模式：按住修飾鍵點格子選取；自由編輯：直接選文字方塊。再按對齊鈕": "Table mode: hold the modifier key and click cells; free edit: select text boxes directly. Then press an align button","靠左對齊": "Align left","水平置中": "Centre horizontally","靠右對齊": "Align right","水平均分": "Distribute horizontally","依欄線置中": "Centre between column rules","選到文字方塊才能改": "Available when a text box is selected","選到線條才能改": "Available when a line is selected","選取的線拉到同一個起點（左端／上端），另一端不動": "Move the selected lines to a common start (left / top); the other end stays","選取的線拉到同一個終點（右端／下端），另一端不動": "Move the selected lines to a common end (right / bottom); the other end stays","刪除選取物件（Delete）": "Delete the selected objects (Delete)","復原": "Undo","重做": "Redo","把目前的自由編輯結果存成 .json，之後拖回來就能接著改（不需要原始 PDF）": "Save the current free-edit result as .json; drop it back in later to keep editing (no original PDF needed)","畫出表身上下界（只在畫面上，不會印出來）": "Draw the table body bounds on screen only (never printed)","搜尋文字": "Find text","上一個 (Shift+Enter)": "Previous (Shift+Enter)","下一個 (Enter)": "Next (Enter)","標出被線壓到的字，以及原檔是白字／極淡字（印出來不會有標記）": "Mark glyphs clipped by rules, and text that is white / near-white in the source (marks are not printed)","字框先往內縮這麼多才判定壓線；調大只留下壓得深的": "Shrink the glyph box by this much before testing for clipping; raise it to keep only deep overlaps","原檔填色亮度 ≥ 此值就算白字（255＝純白）；調低會連淺灰字一起抓": "Source fill brightness at or above this counts as white text (255 = pure white); lower it to catch light grey too","檔案": "File","起始頁": "Start page","對開表": "Spread","自由編輯": "Free edit","檢視": "View","符合頁寬": "Fit width","符合頁高": "Fit height","列印 / 存成 PDF": "Print / Save as PDF","版面": "Layout","整份套用": "whole document","邊界 上": "Margin top","下": "bottom","最小列高": "Min row height","文字置中": "Centre text","合計貼地線": "Sink totals to bottom rule","整份字型": "Document font","分頁": "Pagination","🔒 凍結分頁": "🔒 Freeze breaks","🔓 清除鎖定": "🔓 Clear locks","表尾註": "Footnotes","註起始": "Note offset","重排備註": "Re-wrap notes","選取的列": "Selected rows","先在頁面上點選": "click on the page first","組成群組": "Group","解除群組": "Ungroup","取消選取": "Clear selection","編輯文字": "Edit text","對齊": "Align","＋點選格子": " + click cells","選取的物件": "selected objects","文字方塊": "Text box","線條": "Line","字型": "Font","線 長": "Line length","粗": "width","齊頭": "Align starts","齊尾": "Align ends","刪除": "Delete","存檔": "Save","拖曳搬移・線兩端可拉長度・雙擊改字・方向鍵微調（Shift 大步）": "Drag to move · drag a line end to resize · double-click to edit · arrow keys nudge (Shift = bigger step)","複製診斷資訊": "Copy diagnostics", "把這份檔的結構統計（頁數、紙張、框線條數、列數…）複製起來，貼進回報用。只有數字，不含檔案內容": "Copies this file's structural stats (pages, paper size, rule counts, row counts…) for a bug report. Numbers only — no document content", "畫面": "Screen","不會印出來": "not printed","輔助線": "Guides","檢查": "Check","容許": "Tolerance","白字門檻": "White threshold","把 PDF 拖進來": "Drop a PDF here", "調整單一張連續表格的分頁": "Repaginate one continuous table", "——只改哪幾列落在哪一頁，版面不動": " — only which rows land on which page changes; the layout does not", "整本 10-K、年報這類多節文件不適用": "Not for whole 10-Ks, annual reports or other multi-section documents", "用途：調整單一張連續表格的分頁——哪幾列落在哪一頁。\n不適用：整本 10-K、年報、報告書這種多節文件（沒有單一張表可分，會被攤成幾千個無意義的「列」）。\n需要：文字型 PDF（掃描檔沒有文字圖層）。表格最好有橫貫全寬的天地線；沒有框線的純文字文件也能開，邊界改由內容決定。": "What it is for: repaginating one continuous table — which rows land on which page.\nWhat it is not for: a whole 10-K, annual report or other multi-section document (there is no single table to repaginate; it flattens into thousands of meaningless rows).\nWhat it needs: a text-based PDF (scans have no text layer). The table should ideally have full-width top and bottom rules; borderless plain-text documents also open, with bounds taken from the content.","或": "or ","點這裡選檔案": "click to choose a file","天地線、欄線、頁首、字型與框線粗細全部從原檔讀出來": "Top/bottom rules, column rules, headers, fonts and line widths all come from the source file","只調整資料列落在哪一頁，版面不動": "Only which page each row lands on changes — the layout does not","只吃文字型 PDF，掃描檔沒有文字圖層。表格需有橫貫全寬的天地線；無框線的純文字文件也可以，邊界改由內容決定。自由編輯的 .json 存檔也可以拖進來。": "Text-based PDFs only — scans have no text layer. Tables need full-width top and bottom rules; borderless plain-text documents also work, with bounds taken from the content. Free-edit .json saves can be dropped in too.","檔案不會上傳，全部在你這台電腦的瀏覽器裡處理。": "Nothing is uploaded — everything runs in the browser on your own machine.",
 "開啟檔案": "Open file","開啟 PDF，或拖回自由編輯的 .json 存檔。檔案不會上傳": "Open a PDF, or drop a free-edit .json save back in. Nothing is uploaded",
 "上邊界": "Top margin","下邊界": "Bottom margin",
 "表身上方留白，避免字壓到天線": "Padding above the table body so text does not touch the top rule",
@@ -472,7 +472,7 @@ blang.onclick=blang2.onclick=ev=>{ ev.stopPropagation();   // 首頁那顆在拖
 let minLH=0;
 const avgPg=new Set();        // 要平均列高的頁（非最後一頁本來就是平均的）
 const locks=new Set();        // 鎖住的分頁點，以「第幾個 unit 之後斷頁」記，不受其他頁增減影響
-let W=595,pageW=595,H=842, frame=[], frames=[], head=[], note=[], rows=[], units=[], breaks=[], PADT=2, PADB=2, NOTEY=0, SINKGAP=0, sinkGapTouched=false, topY=0, bodyTop=0, bodyBot=800, bottomY=800, pgBots=[], fillY=800, LH=7, perPage=1;
+let W=595,pageW=595,H=842, frame=[], frames=[], head=[], note=[], noteSrc=[], rows=[], units=[], breaks=[], PADT=2, PADB=2, NOTEY=0, SINKGAP=0, sinkGapTouched=false, topY=0, bodyTop=0, bodyBot=800, bottomY=800, pgBots=[], fillY=800, LH=7, perPage=1;
 // 這份是非表格型（純文字內文）嗎：決定 render() 要等高排列還是保留原檔列距
 let noFrameDoc=false, mixedSize=0, loadWarn=[];
 const sel=new Set();
@@ -665,6 +665,9 @@ async function load(){
   // 全部收成一份畫在末頁就會疊成一團（用人費用、固資來源、固資成本效益、OF-08-基金 都會）。
   // 原檔末頁那份才是表尾註，跟著表格結尾走；其餘各頁的原位不動，該頁的列也不會排到它上面。
   note = all.map((pg,i)=>pg.filter(r=>r.y>sep && isNote(r,nfEff[i],bots[i])));
+  // 重排備註要跟原檔比對「哪幾條改過字」：沒改過的條照原檔搬，改過字的才重新斷行
+  // （雙擊改字只換掉那一格的片段物件，這份深拷貝不會跟著變）
+  noteSrc = note.map(pg=>pg.map(r=>r.map(s=>({...s}))));
   const tail = note[note.length-1] || [];
   // 註起始＝表尾註整段再上下微調幾 pt，預設 0。定位改成由註自己算（見 render()）：
   // 最後一列的下緣貼齊「其它頁的地線」，地線再從註的上緣往上收，所以原檔末頁的地線
@@ -1200,7 +1203,7 @@ function render(){
       // 表尾註：把「註起始」與「重排備註」放在最後一頁的分頁列上，調的時候眼睛不用離開註本身
       + (last&&nt.length?`<span class="sep"></span><span class="sub">${T('註起始','Note offset')}
           <button data-n="-1" class="bico" title="${T('表尾註整段往上移 1pt（地線跟著往上收）','Move the whole footnote block up 1pt (the bottom rule follows)')}">−</button><b>${NOTEY.toFixed(1)}</b><button data-n="1" class="bico" title="${T('表尾註整段往下移 1pt（地線跟著往下放）','Move the whole footnote block down 1pt (the bottom rule follows)')}">+</button>pt</span>`
-        + `<button data-r=1 class="bico" title="${T('把表尾註整段接起來重新斷行（改完字之後用）；對開表會跨兩張紙接排','Join the footnote block and re-wrap it (use after editing text); spreads flow across both sheets')}">${T('重排備註','Re-wrap notes')}</button>`
+        + `<button data-r=1 class="bico" title="${T('把改過字的表尾註那一條重新斷行（沒改過的一字不動，連原檔的行尾都留著）；對開表會跨兩張紙接排','Re-wrap the footnote items whose text you edited (untouched ones stay exactly as in the source); spreads flow across both sheets')}">${T('重排備註','Re-wrap notes')}</button>`
         :'');
     // 核取方塊走 change（點到 label 文字也算），按鈕走 click
     // 鎖定的分頁點是「段」的界線：從本頁一路套用到下一個鎖定點所在的那頁為止
@@ -1250,9 +1253,13 @@ function move(pi,d){
 
 // ── 重排表尾註 ──
 // 註在原檔是一串絕對定位的片段、斷行是寫死的，所以雙擊改完字之後後面的字不會跟著跑。
-// 這裡把整段接起來重新斷行：條號（1. 2.）各自成一條、續行縮排到條號後面，
+// 重排＝把改過字的那幾條接起來重新斷行：條號（1. 2.）各自成一條、續行縮排到條號後面，
 // 排到半頁右緣就接到下一個半頁繼續——對開表的註本來就是橫跨兩張紙的一行。
-// 代價：重排後用的是本機字型的度量，不再是原檔的 data-w，行尾位置會跟原檔差一點。
+//
+// **沒改過字的條一律照原檔搬**（連原檔的段寬 data-w 與每一段自己的基線都留著）。
+// 理由是重排用的字寬是本機字型量出來的、不是原檔排那一行時用的字型，整段重排會讓
+// 沒動到的行尾一起跑掉、還會把標點搬到別行去——實測 `OF-05 固資來源` 只改一個數字，
+// 原檔第 4 行行首的「就被搬到第 3 行行尾。只重排改過的那一條，改一次字只影響那一條。
 
 // 量字寬：拿一個隱藏的 .seg 來量，字型／fallback 與畫面上完全一致（放在 out 外面，不吃 zoom）
 // 量完就拿掉，不留在 DOM 裡——藏在版面外的元素仍算進版面寬度，Chrome 列印會為了「符合寬度」整份縮小
@@ -1270,6 +1277,25 @@ function textW(t,s){
   mCache.set(k,w); return w;
 }
 
+// 把整段註切成「條」：條號（1. 2.、2.xxx 都算）各自成一條，沒有條號的整段算一條。
+// 每一條記下它用到哪幾列（ri＝原檔的實體行）、原文（比對有沒有改過字用）與片段。
+function noteItems(blk){
+  const items=[]; let cur=null;
+  blk.forEach((r,ri)=>r.forEach(s=>{
+    if(isMark(s.t) || !cur) items.push(cur={mark:null, rows:[], segs:[]});
+    if(cur.rows[cur.rows.length-1]!==ri) cur.rows.push(ri);
+    cur.segs.push(s);
+    if(isMark(s.t)) cur.mark=s;
+  }));
+  return items.map(it=>Object.assign(it,{text:it.segs.map(s=>s.t).join('')}));
+}
+// 條號：原檔獨立片段（「1.」）或黏著內文的（「2.兼任人員…」）都算。
+// 「1.5倍」的點後是數字，不當條號。
+const isMark=t=>/^\d+[.、](\s|[\u4e00-\u9fff]|$)/.test(t.trim());
+// 中文避頭尾點：收尾符號不能落在行首、開頭符號不能落在行尾
+const NO_START=/[）」』】》〉〕｝”’！？：；、。，．・ー～…%‰℃]/;
+const NO_END=/[（「『【《〈〔｛“‘]/;
+
 function reflowNote(){
   let bi=note.length-1; while(bi>0 && !note[bi].length) bi--;
   const blk=note[bi];
@@ -1279,32 +1305,21 @@ function reflowNote(){
     return alert(T('這份的註被拆在左右半頁，接起來會是錯的。請先勾「對開表」再重排。','This document\u2019s notes are split across the two halves; joining them would be wrong. Tick "Spread" first, then re-wrap.'));
   push();
   document.body.appendChild(mEl);
-  try{ note[bi]=reflow(blk); } finally { mEl.remove(); }
+  try{ note[bi]=reflow(blk, noteSrc[bi]); } finally { mEl.remove(); }
   render();
 }
 
-function reflow(blk){
+function reflow(blk, base){
   // 左右邊界取自框線的橫線（每個半頁同一組邊界）
   const hs=frame.filter(l=>l.w && l.x<pageW);
   const mL=hs.length?Math.min(...hs.map(l=>l.x)):30;
   const mR=hs.length?Math.max(...hs.map(l=>l.x+l.w)):pageW-30;
   const lo=k=>k*pageW+mL;
+  const flat=blk.flatMap(r=>r.map(s=>s));
   // 行高沿用原檔註的列距；只有一列時用字級推
   const ys=blk.map(r=>r.y), sz=rowSz(blk[0])||11;
   const gaps=ys.slice(1).map((y,i)=>y-ys[i]).filter(g=>g>1).sort((a,b)=>a-b);
   const lh=gaps.length?gaps[gaps.length>>1]:sz*1.35;
-  // 條號：原檔獨立片段（「1.」）或黏著內文的（「2.兼任人員…」）都算，用它切條，
-  // 也用它抓「條號欄」與「內文欄」兩個縮排。「1.5倍」的點後是數字，不當條號。
-  const isNum=t=>/^\d+[.、](\s|[\u4e00-\u9fff]|$)/.test(t.trim());
-  const flat=blk.flatMap(r=>r.map(s=>({...s})));
-  const xPre=flat[0].x; let xMark=xPre, xText=xPre;
-  for(let i=0;i<flat.length;i++) if(isNum(flat[i].t)){
-    xMark=flat[i].x;
-    // 條號黏著內文（「2.本年度…」）時，flat 的下一段是同一行右邊的續段、不是內文——
-    // 長債拿它當內文欄會算成 549，每行只剩 28pt，8 行炸成 142 行。改用條號本身的寬度推。
-    const m=/^(\d+[.、])([\s\S]*)$/.exec(flat[i].t.trim());
-    xText = m && m[2] ? xMark+textW(m[1], flat[i]) : (flat[i+1]?flat[i+1].x:xMark);
-    break; }
   // 原檔的註排到第幾個半頁為止就接到哪：長債的註整段只佔左半，不該被攤成兩頁寬
   const N=Math.max(1, ...flat.map(s=>Math.floor(s.x/pageW)+1));
   // 右緣取框線與原檔註本身的較大者：有些檔的註比表格寬（固資成本效益排到 604，框線只到 577），
@@ -1312,20 +1327,46 @@ function reflow(blk){
   const rEdge=[]; for(let k=0;k<N;k++) rEdge[k]=Math.max(k*pageW+mR,
       ...flat.filter(s=>Math.floor(s.x/pageW)===k).map(s=>s.x+(s.w||0)));
   const hi=k=>rEdge[k];
-  const items=[]; const pre=[]; let cur=null;
-  flat.forEach(s=>{
-    if(isNum(s.t)){
-      // 條號黏著內文（「2.兼任人員…」）時拆成「2.」＋內文兩段，內文接在條號後面
-      const m=/^(\d+[.、])([\s\S]*)$/.exec(s.t.trim());
-      items.push(cur={mark:{...s, t:m[1], w:0}, runs:[]});
-      if(m[2]) cur.runs.push({...s, t:m[2], w:0});
-    } else (cur?cur.runs:pre).push(s);
+  const items=noteItems(blk), src=base?noteItems(base):null;
+  const out=[], done=new Set(); let off=0;      // off＝上面幾條行數增減造成的位移
+  items.forEach((it,i)=>{
+    // 沒改過字：整條照原檔畫（每一段自己的 x/y 與原檔段寬 w 都留著），只跟著上面的行數變化平移
+    if(src && src[i] && src[i].text===it.text){
+      it.rows.forEach(ri=>{ if(done.has(ri)) return; done.add(ri);
+        const r=blk[ri];
+        out.push(Object.assign(r.map(s=>({...s, y:s.y+off})), {y:r.y+off})); });
+      return;
+    }
+    // 改過字：從這一條自己在原檔的位置重排，下面幾條跟著位移
+    const y0=(it.rows.length?blk[it.rows[0]].y:ys[0])+off;
+    const rows=wrapItem(it,{blk, lo, hi, N, lh, y0});
+    out.push(...rows);
+    off+=(rows.length-it.rows.length)*lh;
   });
-  if(!items.length) items.push({mark:null, runs:pre.splice(0)});
+  return out;
+}
 
+// 把一條重新斷行，回傳一組列（y 從 y0 起算、每行加一個 lh）。
+// 條號欄（xMark）與內文欄（xText）用它自己在原檔的座標，不是整段共用一組。
+function wrapItem(it, c){
+  const {blk, lo, hi, N, lh, y0}=c;
+  const mi=it.mark?it.segs.indexOf(it.mark):-1;
+  const pre=mi>=0?it.segs.slice(0,mi):it.segs.slice();
+  const m=it.mark?/^(\d+[.、])([\s\S]*)$/.exec(it.mark.t.trim()):null;
+  const mark=it.mark?{...it.mark, t:m?m[1]:it.mark.t, w:0}:null;
+  // 條號黏著內文（「2.本年度…」）時，內文欄用條號自己量出來的寬度推，
+  // 不能拿同一行右邊的續段當內文欄——長債會算成 549，每行只剩 28pt，8 行炸成 142 行
+  const first=it.segs[0];
+  // 續行的縮排：有條號就用條號後面的內文欄；沒有條號（「註：…」整段）就用它原檔第二行以後的起點
+  const cont=it.rows.length>1 ? Math.min(...blk[it.rows[1]].map(s=>s.x)) : first.x;
+  const xText = !mark ? cont : (m && m[2]) ? mark.x+textW(mark.t, mark)
+                       : (it.segs[mi+1] ? it.segs[mi+1].x : mark.x);
+  const runs=[];
+  if(mark && m && m[2]) runs.push({...it.mark, t:m[2], w:0});     // 黏著內文拆成兩段
+  if(mi>=0) runs.push(...it.segs.slice(mi+1));
   // 註整段只在右半頁時（員工人數），起點與換行都要回到它自己那一半，不是從左半重新起算
-  const k0=Math.min(N-1, Math.floor(xPre/pageW));
-  const out=[]; let k=k0, y=ys[0], x=xPre, line=[], buf='', bufX=x, st=null;
+  const k0=Math.min(N-1, Math.floor(first.x/pageW));
+  const out=[]; let k=k0, y=y0, x=first.x, line=[], buf='', bufX=x, st=null;
   const emit=()=>{ if(buf){ line.push({...st, t:buf, x:bufX, y, w:0}); buf=''; } bufX=x; };
   const nextHalf=()=>{ emit(); k++; x=lo(k); bufX=x; };
   const nextLine=ind=>{ emit(); if(line.length) out.push(Object.assign(line,{y}));
@@ -1338,24 +1379,30 @@ function reflow(blk){
     if(!same(st,sty)){ emit(); st=sty; }
     for(const tk of toks(t)){
       const w=textW(tk,sty);
-      // 放不下就換半頁；最後一個半頁也滿了就換行。換完還是放不下就再換一次，最多繞一圈
-      for(let g=0; g<N && x+w>hi(k)+.5 && x>lo(k); g++) k<N-1 ? nextHalf() : nextLine(xText);
+      // 放不下就換半頁；最後一個半頁也滿了就換行。
+      // 收尾符號（，。）不落行首：不換行，讓它擠在行尾（追い込み），比孤零零掉到下一行好看
+      if(!NO_START.test(tk[0]))
+        for(let g=0; g<N && x+w>hi(k)+.5 && x>lo(k); g++){
+          // 開頭符號（「（ ）不落行尾：拆下來跟下一行一起排
+          let carry='';
+          if(buf && NO_END.test(buf.slice(-1))){ carry=buf.slice(-1); buf=buf.slice(0,-1); x-=textW(carry,sty); }
+          k<N-1 ? nextHalf() : nextLine(xText);
+          if(carry){ buf=carry; x+=textW(carry,sty); }
+        }
       if(!buf && !line.length && /^\s+$/.test(tk)) continue;      // 行首的空白丟掉
       buf+=tk; x+=w;
     }
   };
-  // 「註：」開頭的前綴跟第一條同排；整段前文（條號黏在「註：1.…」裡時）先換行再排條號。
+  // 「註：」開頭的前綴跟第一條同排；前綴太寬（比內文欄寬）就讓條號自己一行。
   // 門檻要比「內文欄」寬才算長前綴——「註：」本來就會稍微越過條號欄（實測 22pt vs 20.8pt），
   // 拿條號欄當門檻會把每一份註的「註：」都推成獨立一行。
   const preW=pre.reduce((a,s)=>a+textW(s.t,s),0);
   pre.forEach(s=>add(s.t,s));
-  items.forEach((it,i)=>{
-    if(i) nextLine(xMark);
-    else if(it.mark && preW>(xText-xPre)) nextLine(xMark);
-    else if(it.mark) goto_(xMark);
-    if(it.mark){ add(it.mark.t, it.mark); goto_(xText); }
-    it.runs.forEach(s=>add(s.t,s));
-  });
+  if(mark){
+    if(preW > xText-mark.x) nextLine(mark.x); else goto_(mark.x);
+    add(mark.t, mark); goto_(xText);
+  }
+  runs.forEach(s=>add(s.t,s));
   emit(); if(line.length) out.push(Object.assign(line,{y}));
   return out;
 }
