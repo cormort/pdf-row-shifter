@@ -209,7 +209,7 @@
   /* 分頁列：夾在兩張紙中間，是這個工具最常操作的地方，所以資訊照「決策順序」排——
      第幾頁／這頁幾列 → 推、拉 → 平均列高 → 鎖定 */
   .brk{position:relative;display:flex;flex-wrap:wrap;gap:7px 11px;justify-content:center;align-items:center;color:var(--dim);font-size:14px;
-       margin:0 auto 18px;padding:7px 15px;width:fit-content;background:var(--brk-bg);border:1px solid var(--line);
+       margin:0 auto 18px;padding:7px 15px;width:fit-content;max-width:calc(100vw - 34px);background:var(--brk-bg);border:1px solid var(--line);
        border-radius:999px;box-shadow:var(--sh);backdrop-filter:blur(8px)}
   /* 滑到分頁列的任一顆控制項上，就把「上面那一頁」框起來——直接指出這排按鈕在動誰。
      只在畫面上生效；列印沒有 hover，也不會把框線印出去 */
@@ -1231,7 +1231,7 @@ function render(){
   pgs.forEach(p=>p.style.transform='');
   const tops=pgs.map(p=>p.getBoundingClientRect().top);
   pgs.forEach((p,i)=>p.style.transform=`translateY(${(Math.round(tops[i]*dpr)-tops[i]*dpr)/dpr/zm}px)`);
-  bindDrag(); bindEdit(); fitWidths();
+  bindDrag(); bindEdit(); fitWidths(); zoomBars();   // 分頁列是重新產生的，縮放要重新抵掉
 }
 
 // 這個分頁點還能不能往 d 的方向搬。分頁列上的 ↓／↑ 靠它決定要不要變灰——
@@ -1453,7 +1453,11 @@ function fit(m){
   if(avail<40) return;                   // 視窗被縮到看不見（或分頁在背景）時不要亂縮
   setZoom(avail/(m==='w'?w:pgs[0].offsetHeight));
 }
-const setZoom=z=>{ zm=Math.max(.1,Math.min(4,z)); out.style.zoom=zm===1?'':zm; };
+// 分頁列不跟著紙縮放：它排在 #out 裡面（要對齊紙張中心），但那是操作介面、不是紙的一部分，
+// 外面的 zoom 用倒數抵掉——「符合頁寬」縮到 30% 時字還是原來的大小，不會跟著紙一起變小。
+// zoom 1 時不寫 inline，維持原本的 1:1。
+const zoomBars=()=>out.querySelectorAll('.brk').forEach(b=>b.style.zoom = zm===1 ? '' : String(1/zm));
+const setZoom=z=>{ zm=Math.max(.1,Math.min(4,z)); out.style.zoom=zm===1?'':zm; zoomBars(); };
 // 側欄用 sticky 貼在工具列下方，工具列換行時高度會變，量到 --ctlH 給 CSS 用
 const syncCtlH=()=>document.documentElement.style.setProperty('--ctlH', ctl.offsetHeight+'px');
 addEventListener('resize',()=>{ syncCtlH(); fitMode&&fit(fitMode); });
