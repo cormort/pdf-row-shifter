@@ -35,15 +35,20 @@ The choice is remembered in `localStorage`.
   layout, then split back into two A4 sheets at print time, with page numbers renumbered per side.
 - **Footnotes**: detected and lifted out automatically, so they never take part in pagination as data
   rows. The block on the source file's last page follows the end of the table and is drawn on the
-  last page; notes on other pages stay where they are on their own page. "Note offset" sets its
-  distance from the bottom rule (the source value is the default; negative when the note sits on the
-  rule), and the whole block moves together at its original leading.
+  last page; notes on other pages stay where they are on their own page. On the last page the block is
+  **anchored onto the other pages' bottom rule**: the bottom edge of the last note line lines up with
+  that rule, and the rule is then pulled up from the top of the notes — i.e. *bottom rule = the other
+  pages' bottom rule − the height of all the note lines*. Where the source's own last-page rule sits no
+  longer decides anything, so every document's notes land in the same band; re-wrapping notes into a
+  taller block only pushes the rule further up instead of running off the paper. "Note offset" is now a
+  fine nudge of the whole block (default 0).
 - **Re-wrap notes**: joins the footnote block and re-breaks the lines — each item number (`1.` `2.`)
   becomes its own entry, continuation lines align after the number, and text reaching the right edge
   of a half-page continues on the next half-page. Use it after editing the text.
-- **Sink totals to bottom rule**: when the last page is not full, the trailing run of total rows sinks
-  as a block onto the bottom rule and the gap is left in the middle; every other row keeps its
-  position and leading (unlike "even row height", which stretches the whole page).
+- **Sink totals to bottom rule (on by default)**: when the last page is not full, the trailing run of
+  total rows sinks as a block onto the bottom rule and the gap is left in the middle; on the last page
+  the rule's position comes from the footnote block, so the total row ends up right above it. Every
+  other row keeps its position and leading (unlike "even row height", which stretches the whole page).
 - **In-place editing**: double-click any cell to edit, Enter to keep, Esc to discard.
 - **Free edit**: no rows, no pagination — the whole document laid out flat, with text boxes and lines
   you can drag, resize and restyle. Ticking it **takes over the layout currently on screen** (page
@@ -236,11 +241,24 @@ comparisons the row counts were entirely unchanged with no text overlap anywhere
 change: `綜計-OF-01`'s note is on page 1 of the source (9 pages total) and now stays on page 1
 instead of moving to the last page.
 
-**The bottom rule is pulled up per page, just as the source does**: the rule is raised to make room for the
-notes below it, so drawing the first page's rule on every page boxes the notes inside the table
-(`固資成本效益`: notes 82pt above the bottom rule, `OF-08-基金`: 62pt). Each page now draws its
-own, with the ends of the verticals shortened to match. Three conditions must all hold, otherwise
-nothing changes:
+**The last page's bottom rule comes from the footnote block; other pages keep the source's own raised
+rule.** The rule is raised to make room for the notes below it, so drawing the first page's rule on
+every page boxes the notes inside the table (`固資成本效益`: notes 82pt above the bottom rule,
+`OF-08-基金`: 62pt).
+
+The last page (and the last spread in spread mode) is now computed from the notes themselves: the whole
+block is anchored onto the other pages' bottom rule (`bottomY`, the first page's rule), the bottom edge
+of the last note line flush with it, and the rule lands at `bottomY − block height` (= the height of all
+the note lines). Every document's notes therefore sit in the same band, their bottom edge flush with the
+other pages' rule, so a printed or flipped spread no longer runs high on one version and low on the next.
+Where the source's own last-page rule sat is no longer the deciding factor — raised too far and the notes
+float in mid-air, misaligned with the other pages; raised too little (or the notes grew after an edit or
+a re-wrap) and they run off the paper. Computing from the notes means a taller re-wrapped block simply
+pushes the rule further up. "Note offset" nudges the whole block a few points (default 0) and the rule
+follows it, so the two never separate.
+
+Other pages that carry notes (only possible when a spread file is opened in single-page mode) keep the
+rule the source raised for them. Three conditions must all hold, otherwise nothing changes:
 
 | Condition | What it blocks |
 |---|---|
@@ -259,10 +277,10 @@ expected changes, all in single-page mode — page 3 of both `OF-08-基金` vers
 pages 27–28 of both `固資成本效益` files (786 → 702), with the notes fully below the rule and
 the rows fully above it. Zero differences in spread mode.
 
-The last page's layout lower bound comes from a single `botLimit`: the bottom rule by default, backed
+The last page's layout lower bound comes from a single `botLimit`: the bottom rule by default. On the
+last page the notes are anchored below the rule, so nothing backs off; on other pages the bound backs
 off by one original row height if the notes ride above the rule. Even row height, last-page original
-leading and sink-totals-to-bottom-rule all share that one bound and cannot fight each other; with the
-notes below the rule, nothing backs off.
+leading and sink-totals-to-bottom-rule all share that one bound and cannot fight each other.
 
 26 verifications: no 註 line left among the data, both halves of every spread carrying the same rows,
 and the last row within bounds under all three layout modes; files without notes are entirely
@@ -414,13 +432,14 @@ across without the next page sending one back" = reorder, then move that break b
 `move(pi,±1)` logic, about 3 lines; better hung off a modifier key than baked into the default feel).
 For now the row tooltip explains the behaviour and points at the push/pull buttons between pages.
 
-**The last page's bottom rule is not adjustable by hand.** The rule is a `frame` line read from the
-source; the last page auto-raises to the position measured in the source (see above), but "margin
-bottom" only shrinks the layout's lower bound and "note offset" only shifts the notes — neither
-touches the line itself. If the need is "the last page is not full and there is too much white space
-below", the right answer is a snap-to checkbox (move the rule to the last row + bottom margin, with
-`bodyBot` following, mutually exclusive with "sink totals to bottom rule") rather than a point spinner
-— users cannot work that number out, and it would fight the four mechanisms sharing one lower bound
-(`bodyBot` / `botLimit` / notes / sink totals).
+**The last page's bottom rule (done: it now comes from the footnote block).** Originally the rule only
+followed the `frame` line read from the source, so where the last page's rule ended up was entirely up
+to the source — the notes misaligned with the other pages, or ran off the paper once the user edited
+the text and re-wrapped. The last page's rule is now always computed from the notes themselves: the
+block is anchored on the other pages' bottom rule and the rule lands at `bottomY − block height` (see
+above), with "note offset" as a whole-block nudge (default 0). The other half of that request — "the
+last page is not full and there is too much white space below", i.e. pulling the rule down to the last
+row plus the bottom margin — is still open, and it is mutually exclusive with "sink totals to bottom
+rule"; it wants a checkbox rather than a point spinner.
 
 MIT

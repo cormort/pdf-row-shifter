@@ -304,7 +304,7 @@
       <label class="r" title="表身下方留白，避免字壓到地線">下邊界<span class="ctl2"><input type="number" id="padB" value="2" min="0" max="60" step="1">pt</span></label>
       <label class="r" title="列高再怎麼壓縮都不低於這個值">最小列高<span class="ctl2"><input type="number" id="minLh" value="0" min="0" max="60" step="0.5">pt</span></label>
       <label class="r" title="列高被拉開時，文字落在上下兩列的中間，而不是貼著自己那條基線">文字置中<input type="checkbox" id="vmid" class="sw" checked></label>
-      <label class="r" title="最後一頁列不滿時，尾端的合計／總計列沉到地線上方，中間留白">合計貼地線<input type="checkbox" id="sink" class="sw"></label>
+      <label class="r" title="最後一頁列不滿時，尾端的合計／總計列沉到地線上方，中間留白（預設開：末頁的地線由表尾註決定，合計列就貼在那條線上方）">合計貼地線<input type="checkbox" id="sink" class="sw" checked></label>
       <label class="r" id="fnAllLbl" title="整份套用同一個字型，Windows／Mac 看到的結果就一致；「（原樣）」＝每個字保留原檔字型">整份字型<select id="fnAll"></select></label>
     </section>
     <section class="tbl">
@@ -519,7 +519,8 @@ spread.onchange = () => {
 };
 sink.onchange = () => units.length && render();
 padT.oninput = padB.oninput = () => { PADT=+padT.value||0; PADB=+padB.value||0; units.length && relayout(); };
-// 註起始＝第一列註距地線的 pt；其餘註列維持彼此的相對距離。
+// 註起始＝表尾註整段距「其它頁的地線」再偏移幾 pt（0＝最後一列下緣貼齊那條線）；
+// 地線跟著註走，所以移動的是註＋地線整組，註永遠不會穿出紙外。
 // 這個值只有分頁列上（最後一頁那條）有控制項——它就貼在會動到的那些註旁邊
 guide.onchange = () => units.length && render();
 vmid.onchange = () => units.length && render();
@@ -618,7 +619,8 @@ async function load(){
   // 改以紙張最下段（y > 頁高 × 0.9）認頁碼。
   const atPgNo = (r,bot) => isPgNo(r) && (noFrame ? r.y > H*.9 : r.y > bot);
   // 分列／分註只認「比首頁高」的地線：量不到全寬線的頁（spanning 退回整頁）沿用首頁值。
-  // 版面基準（平均列高、註起始）仍一律用首頁的 bottomY；末頁的框線另外在 render() 收上去。
+  // 版面基準（平均列高、註起始）仍一律用首頁的 bottomY；末頁的框線收上去的量由該頁的
+  // 表尾註高度決定，在 render() 算（其餘的頁才用自己量到的地線）
   const bots = noFrame ? pgBot.map(()=>bottomY) : pgBot.map(b=>Math.min(b, bottomY));
   pgBots = bots;
   head = all.map((pg,i)=>pg.filter(r=>r.y<=sep || atPgNo(r,bots[i])));
@@ -658,8 +660,10 @@ async function load(){
   // 原檔末頁那份才是表尾註，跟著表格結尾走；其餘各頁的原位不動，該頁的列也不會排到它上面。
   note = all.map((pg,i)=>pg.filter(r=>r.y>sep && isNote(r,nfEff[i],bots[i])));
   const tail = note[note.length-1] || [];
-  // 註起始預設沿用原檔（表尾註的第一列距地線多遠；騎在線上時是負的）
-  NOTEY = tail.length ? +(Math.min(...tail.map(r=>r.y))-bottomY).toFixed(1) : 0;
+  // 註起始＝表尾註整段再上下微調幾 pt，預設 0。定位改成由註自己算（見 render()）：
+  // 最後一列的下緣貼齊「其它頁的地線」，地線再從註的上緣往上收，所以原檔末頁的地線
+  // 收得多高都不再影響結果，這個值也不必再沿用原檔的偏移量。
+  NOTEY = 0;
 
   rows=[]; units=[]; breaks=[]; sel.clear(); undoS=[]; redoS=[]; selSeg.clear();
   avgPg.clear(); locks.clear(); minLH=0; dragI=lastI=null;
@@ -1038,6 +1042,16 @@ function segPages(pi){
   return out;
 }
 
+// 表尾註整段的幾何：第一列的基線、最後一列的基線、它自己的行距、以及整段的高度。
+// 列框的慣例和畫面一致（基線上方 0.8 行、下方 0.2 行），所以高度＝列距總和＋0.2＋0.8 行。
+// 行距沿用原檔註自己的列距（重排備註後也一樣），只有一列時用字級推。
+function noteBox(nt){
+  const ys=nt.map(r=>r.y).sort((a,b)=>a-b);
+  const gs=ys.slice(1).map((y,i)=>y-ys[i]).filter(g=>g>1).sort((a,b)=>a-b);
+  const lh=gs.length ? gs[gs.length>>1] : Math.max(10, rowSz(nt[0])*1.35);
+  return {lo:ys[0], hi:ys[ys.length-1], lh, h:ys[ys.length-1]-ys[0]+lh};
+}
+
 function render(){
   // 每頁上限跟著最小列高走，改「最小列高」時要一起更新，否則推拉列的上限會沿用舊值
   perPage = Math.floor((bodyBot-bodyTop)/(minLH||LH))+1;
@@ -1059,19 +1073,27 @@ function render(){
     // 少一列就稍微放寬、多一列就稍微壓縮，不會在頁尾留下一塊突兀的空白。
     const n=nlines(start,end);
     const last=pi===breaks.length-1;
-    // 表尾註跟著表格結尾走：末頁畫原檔末頁那份，整塊平移到「地線 + 註起始」，內部行距不變；
-    // 其餘各頁的註（對開表用單頁模式開時才會有）畫在自己那頁的原位（畫在下面，這裡先算位置）
+    // 表尾註跟著表格結尾走：末頁畫原檔末頁那份；其餘各頁的註（對開表用單頁模式開時才會有）
+    // 畫在自己那頁的原位（畫在下面，這裡先算位置）
     const ni = last ? note.length-1 : pi, nt = note[ni] || [];
-    const ndy = last && nt.length ? bottomY+NOTEY-Math.min(...nt.map(r=>r.y)) : 0;
-    const noteTop = nt.length ? Math.min(...nt.map(r=>r.y))+ndy : Infinity;
-    // 地線往上收：原檔列不滿的頁常把地線提上來，空出下面放註（固資成本效益 84pt、OF-08-基金 64pt），
-    // 每頁都畫首頁那條的話，註就被框在表格裡面。三個條件才收，而且是全有全無——收一半會讓地線
-    // 從註中間穿過去：收線量要大過半個行高（濾掉兩道 1pt 疊出來的線合併後 ±1 的飄移，例：長債）、
-    // 註要整段落在新地線下方、這頁的列壓到最小列高仍排得進去（推太多列進來就自動退回原位）。
+    // 表尾註整段墊到「其它頁的地線」上：最後一列的下緣貼齊 bottomY，地線再從註的上緣往上收，
+    // 收到剛好讓整段註塞得下——也就是「地線＝其它頁的地線 − 所有備註列的高度」。
+    // 原檔末頁的地線自己收在哪裡不再是依據：收得比註需要的高，註就浮在半空中、和別頁的註
+    // 對不齊；收得不夠（或註改完字變長）就穿出紙外。改從註本身算，每一份的註都會落在同一條
+    // 帶上、下緣和別頁的地線切齊，重排備註變長也只是把地線往上推。
+    const nb = nt.length ? noteBox(nt) : null;
+    const ndy = last && nb ? bottomY+NOTEY-(nb.hi+nb.lh*.2) : 0;
+    const noteTop = nb ? nb.lo+ndy : Infinity;
+    // 其餘的頁沿用原檔自己收上去的地線：原檔列不滿的頁常把地線提上來，空出下面放註
+    // （固資成本效益 84pt、OF-08-基金 64pt），每頁都畫首頁那條的話，註就被框在表格裡面。
+    // 三個條件都成立才收，而且是全有全無——收一半會讓地線從註中間穿過去：收線量要大過半個
+    // 行高（濾掉兩道 1pt 疊出來的線合併後 ±1 的飄移，例：長債）、註要整段落在新地線下方、
+    // 這頁的列壓到最小列高仍排得進去（推太多列進來就自動退回原位）。
     const raise = bottomY-(pgBots[last ? pgBots.length-1 : pi] ?? bottomY);
     const lo = bodyBot-raise;                                    // 收線後這頁的排版下限
     const lh0 = Math.max(minLH, Math.min(LH, (lo-bodyTop)/Math.max(1,n-1)));
-    const shrink = raise>LH/2 && noteTop>=bottomY-raise && bodyTop+(n-1)*lh0<=lo+.5 ? raise : 0;
+    const shrink = last && nb ? Math.max(0, nb.h-NOTEY)
+                              : raise>LH/2 && noteTop>=bottomY-raise && bodyTop+(n-1)*lh0<=lo+.5 ? raise : 0;
     // 框線照頁首的規則挑：首頁用首頁那份，續頁一律用第 2 頁的（對開表左右半的欄線不同）
     const base = frames[pi] || frames[Math.min(1,frames.length-1)] || frame;
     const fr = shrink ? base.map(l=> l.w ? (l.y>=bottomY-1 ? {...l, y:l.y-shrink} : {...l})
@@ -1097,8 +1119,9 @@ function render(){
       h.insertAdjacentHTML('beforeend', segs(r, r.y, false, pi*N+1, 0, `h,${hi},${ri}`, k))));
     nt.forEach((r,ri)=>halves.forEach((h,k)=>
       h.insertAdjacentHTML('beforeend', segs(r, 0, false, 0, ndy, `n,${ni},${ri}`, k))));
-    // 這頁的列能排到哪裡：地線，但註若騎在地線上（註起始為負）就再退一個原行高，
-    // 否則最後一列會壓在註上面（平均列高把列拉到底時最明顯）；註在地線下方就不必退讓
+    // 這頁的列能排到哪裡：地線。末頁的註已經整段墊在地線下方（地線就是從註的上緣算的），
+    // 不必再退讓；其餘的頁若註騎在地線上（原檔的註起始在線上方）就退一個原行高，
+    // 否則最後一列會壓在註上面（平均列高把列拉到底時最明顯）
     const botLimit = noteTop>bBot ? bBot : Math.min(bBot, noteTop-LH);
     // 勾「平均列高」＝這頁的列平均分佈到表身底端；
     // 沒勾時維持原行為：非最後一頁對齊「最滿那頁」的底端 fillY，最後一頁保留原行高。
@@ -1166,7 +1189,7 @@ function render(){
       + (last?'':`<button data-k=1 class="bico" title="${T('鎖住後這個分頁點不能移動','Once locked, this break cannot move')}">${lk?T('🔒 已鎖','🔒 Locked'):T('🔓 鎖定','🔓 Lock')}</button>`)
       // 表尾註：把「註起始」與「重排備註」放在最後一頁的分頁列上，調的時候眼睛不用離開註本身
       + (last&&nt.length?`<span class="sep"></span><span class="sub">${T('註起始','Note offset')}
-          <button data-n="-1" class="bico" title="${T('往上收 1pt','Move up 1pt')}">−</button><b>${NOTEY.toFixed(1)}</b><button data-n="1" class="bico" title="${T('往下推 1pt','Move down 1pt')}">+</button>pt</span>`
+          <button data-n="-1" class="bico" title="${T('表尾註整段往上移 1pt（地線跟著往上收）','Move the whole footnote block up 1pt (the bottom rule follows)')}">−</button><b>${NOTEY.toFixed(1)}</b><button data-n="1" class="bico" title="${T('表尾註整段往下移 1pt（地線跟著往下放）','Move the whole footnote block down 1pt (the bottom rule follows)')}">+</button>pt</span>`
         + `<button data-r=1 class="bico" title="${T('把表尾註整段接起來重新斷行（改完字之後用）；對開表會跨兩張紙接排','Join the footnote block and re-wrap it (use after editing text); spreads flow across both sheets')}">${T('重排備註','Re-wrap notes')}</button>`
         :'');
     // 核取方塊走 change（點到 label 文字也算），按鈕走 click
