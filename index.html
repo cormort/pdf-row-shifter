@@ -1108,8 +1108,10 @@ function render(){
                               : raise>LH/2 && noteTop>=bottomY-raise && bodyTop+(n-1)*lh0<=lo+.5 ? raise : 0;
     // 框線照頁首的規則挑：首頁用首頁那份，續頁一律用第 2 頁的（對開表左右半的欄線不同）
     const base = frames[pi] || frames[Math.min(1,frames.length-1)] || frame;
+    // 欄線常停在地線的上緣而不是中心：地線粗 2pt 時差 1～2pt（固資來源 778 vs 780），
+    // 只容許 1pt 就收不到，末頁欄線會穿過收上去的地線、一路畫進表尾註。容許半個行高。
     const fr = shrink ? base.map(l=> l.w ? (l.y>=bottomY-1 ? {...l, y:l.y-shrink} : {...l})
-                                         : (l.y+l.h>=bottomY-1 ? {...l, h:Math.max(1,l.h-shrink)} : {...l}))
+                                         : (l.y+l.h>=bottomY-LH/2 ? {...l, h:Math.max(1,l.h-shrink)} : {...l}))
                       : base;
     if(shrink) capEnds(fr);
     const bBot = bodyBot-shrink;
