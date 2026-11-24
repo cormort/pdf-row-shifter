@@ -18,19 +18,25 @@
 
 只印命中的檔；-v 連 0 的也印。離開碼 1 代表有命中。
 
-實測命中（2026-11-24）：
-  03-參考-OF-06-固資成本效益.pdf      p27  3 字（械及設／大樓新／總醫院）
-  農業特別收入基金115年度預算案.pdf    p70  2 字（財目的之長期投／里山林業鐵路及）
-兩份都是對開表的表尾註橫跨折線。多節文件（決算書、計畫報告書）也會命中，
-那是目次的 `………` 點線溢出，不是這個工具的適用範圍。
+實測（2026-11-24，本機 230 份 PDF）真正同類的命中有四處：
+  03-參考-OF-06-固資成本效益.pdf     p27  表尾註（械及設／大樓新／總醫院）
+  農業特別收入基金115年度預算案.pdf   p70  表尾註（財目的之長期投／里山林業鐵路及）
+  考選業務基金預算 113 law/bill       p50  表尾註（務費項下之／理委外承攬／費項下之專）
+  gov-112/113/114（公務決算）         p68  表頭（執行數占預算數百）
+都是對開表橫跨折線的字。其餘命中不是這類：目次的 `………` 點線溢出、
+工程圖說超出紙面、單頁寬表畫在小 MediaBox 上、孤立的裝飾字元。
 """
 import os
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
 NS = "{http://www.w3.org/1999/xhtml}"
 TOL = 1.0  # pt：pdftotext 的 xMax 有零點幾 pt 的抖動
+# 原檔的字元對應不乾淨時，pdftotext 會把 \x03 這種控制字元原樣吐進 XML，
+# XML 1.0 不收，整份就解析失敗（實測 230 份裡有 20 份這樣）。先清掉。
+BAD_XML = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
 def scan(path):
@@ -40,7 +46,7 @@ def scan(path):
         capture_output=True, timeout=300,
     ).stdout.decode("utf-8", "replace")
     try:
-        root = ET.fromstring(out)
+        root = ET.fromstring(BAD_XML.sub("", out))
     except ET.ParseError as e:
         raise ValueError(str(e))
     hits, pages = [], 0
