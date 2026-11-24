@@ -75,7 +75,9 @@ The choice is remembered in `localStorage`.
   lets the page edge clip the right part off (that is how footnotes spanning the fold are made).
   pdf.js extracts text without honouring the clip, so those invisible fragments survive and land
   right on top of the right half's own text once the spread is merged. Text past the page's right
-  edge never prints in the source, so it is dropped on extraction.
+  edge never prints in the source, so it is dropped on extraction. To find files that
+  exercise this path, run `python3 _fixtures/clipscan.py [-v] *.pdf`, which lists every word
+  past the page width.
 - **Copy diagnostics**: copies this file's structural stats (pages, paper size, rule counts,
   `noFrame`, row and note counts…) as one line to paste into a bug report. **Numbers only, no
   document content** — everything runs locally and nothing is uploaded, and this is what can be
