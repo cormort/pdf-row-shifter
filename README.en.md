@@ -92,6 +92,13 @@ Roman these official forms were set in, so reproduction is closer; if the machin
 program measures the actual glyph widths and corrects for them — the layout (column rules,
 pagination, baselines) still lines up, only the letterforms differ.
 
+## Test material
+
+`_fixtures/` holds the English financial-report samples and the check scripts: `selfcheck.py`
+verifies the samples themselves, `clipscan.py` scans for text drawn outside the page. How to run
+them and what to install (`pdfminer.six`, poppler’s `pdftotext`) is in
+[`_fixtures/README.md`](_fixtures/README.md).
+
 ## Detecting the rules: what has to hold for the lines to come out right
 
 The rules are reconstructed by hand, following the CTM through pdf.js's operator list. This was

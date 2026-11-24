@@ -44,6 +44,11 @@ macOS 與 Windows 的 Chrome / Edge 都可用。Windows 上通常直接就有這
 微軟正黑體與 Times New Roman，還原度會更好；若機器缺少對應字型，程式會量測實際字寬並
 自動校正，版面（欄線、分頁、基線）仍然對齊，只是字形不同。
 
+## 測試素材
+
+`_fixtures/` 放英文財報樣本與檢查腳本：`selfcheck.py` 驗樣本本身、`clipscan.py` 掃「畫在頁面外
+被裁切的字」。怎麼跑、要裝什麼（`pdfminer.six`、poppler 的 `pdftotext`）見 [`_fixtures/README.md`](_fixtures/README.md)。
+
 ## 框線偵測：什麼條件下線條才會正常
 
 框線是從 pdf.js 的 operator list 自己追 CTM 還原出來的。用 13 份實際公文表做過驗證
