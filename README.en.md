@@ -71,6 +71,11 @@ The choice is remembered in `localStorage`.
   size most pages have, and the status bar says so. (It previously used whatever the last page of the
   read loop left behind — only page 4 of Apple's FY24 Q4 statements is landscape, which put the whole
   document on landscape paper and broke printing.)
+- **Text outside the clip**: a source file sometimes draws a whole sentence on the left half and
+  lets the page edge clip the right part off (that is how footnotes spanning the fold are made).
+  pdf.js extracts text without honouring the clip, so those invisible fragments survive and land
+  right on top of the right half's own text once the spread is merged. Text past the page's right
+  edge never prints in the source, so it is dropped on extraction.
 - **Copy diagnostics**: copies this file's structural stats (pages, paper size, rule counts,
   `noFrame`, row and note counts…) as one line to paste into a bug report. **Numbers only, no
   document content** — everything runs locally and nothing is uploaded, and this is what can be
