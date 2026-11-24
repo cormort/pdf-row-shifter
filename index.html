@@ -560,7 +560,12 @@ async function load(){
       const c=await pg.getTextContent();
       await pg.getOperatorList();          // 跑過才會把字型載進 commonObjs，粗體資訊在那裡
       markBold(c, await synthBold(pg));    // 合成粗體（Tr=2）——字型名判斷不到
-      txt.push(...markPale(lines(c, H, fonts(pg,c)), await pale(pg)).map(r=>shift(r,dx)));
+      // 原檔把跨頁折線的那一行整句畫在左半頁、靠頁面邊界裁掉右邊；pdf.js 抽字不吃裁切，
+      // 那截看不見的字會留下來，對開併版時正好疊在右半頁自己的字上（固資成本效益的表尾註）。
+      // 右緣外的字在原檔本來就印不出來，直接丟掉。
+      txt.push(...markPale(lines(c, H, fonts(pg,c)), await pale(pg))
+        .map(r=>Object.assign(r.filter(s=>s.x+(s.w||0) <= pageW+1),{y:r.y}))
+        .filter(r=>r.length).map(r=>shift(r,dx)));
       fr.push(...(await getFrame(pg,H)).map(l=>({...l, x:l.x+dx})));
     }
     W = pageW*N;
