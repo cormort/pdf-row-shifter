@@ -11,12 +11,15 @@ Verifies against manifest.json:
   4. note_lines_per_page matches per-page note counts
   5. trap_rows sit in the table region (data rows, not notes)
   6. per-page extracted line counts printed for eyeballing data_row_count
+  7. no text drawn outside the page (clipscan.py) — the fixtures must not
+     exercise index.html's "drop text past the right edge" path
 """
 import json
 import os
 import re
 import sys
 
+import clipscan
 from pdfminer.high_level import extract_pages
 from pdfminer.layout import LTLine, LTRect, LTTextBoxHorizontal, LTTextLineHorizontal
 
@@ -25,6 +28,7 @@ from pdfminer.layout import LTLine, LTRect, LTTextBoxHorizontal, LTTextLineHoriz
 _TEXT_TYPES = (LTTextBoxHorizontal, LTTextLineHorizontal)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)  # 讓 `import clipscan` 不挑 cwd
 EN = os.path.join(HERE, "en")
 MIN_RULE_LEN = 612 * 0.9  # 550.8 pt
 
@@ -185,6 +189,20 @@ def main():
             print(f"  [FAIL] data_row_count: extracted {total_rows}, "
                   f"manifest {m['data_row_count']}")
             ok = False
+
+        # ---- 7. 畫在頁面外被裁切的字（見 clipscan.py）。這批樣本是產生出來的，
+        # 不該有這種字；有的話代表產生器把內容畫出紙外了。
+        try:
+            _, clipped = clipscan.scan(path)
+        except Exception as e:
+            print(f"  [SKIP] clipscan: {str(e)[:60]}")
+        else:
+            if clipped:
+                print(f"  [FAIL] clipscan: {len(clipped)} word(s) past the page width, "
+                      f"e.g. p{clipped[0][0]} {clipped[0][4]!r}")
+                ok = False
+            else:
+                print("  [ OK ] clipscan: no text drawn outside the page")
 
         all_ok = all_ok and ok
 
