@@ -47,7 +47,8 @@ macOS 與 Windows 的 Chrome / Edge 都可用。Windows 上通常直接就有這
 ## 測試素材
 
 `_fixtures/` 放英文財報樣本與檢查腳本：`selfcheck.py` 驗樣本本身、`clipscan.py` 掃「畫在頁面外
-被裁切的字」。怎麼跑、要裝什麼（`pdfminer.six`、poppler 的 `pdftotext`）見 [`_fixtures/README.md`](_fixtures/README.md)。
+被裁切的字」、`baseline-check.js` 量「最後一列基線 − 地線」有沒有越線（起 `python3 -m http.server`，
+在 `index.html` 的 console 貼上後 `await check('/samples/')`，全部負值就是過）。怎麼跑、要裝什麼（`pdfminer.six`、poppler 的 `pdftotext`）見 [`_fixtures/README.md`](_fixtures/README.md)。
 
 ## 框線偵測：什麼條件下線條才會正常
 
