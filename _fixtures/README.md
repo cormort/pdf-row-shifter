@@ -11,6 +11,7 @@
 | `selfcheck.py` | 對 `en/` 逐份跑 7 項檢查，全過才 `OVERALL: PASS` |
 | `clipscan.py` | 單獨使用：掃一批 PDF，找畫在頁面外被裁切的字 |
 | `baseline-check.js` | 在瀏覽器裡量每份 PDF 最後一列的基線有沒有越過地線 |
+| `sink-before.jpg` / `sink-after.jpg` | 「合計沉到地線下面」那個 bug 的修正前後對照截圖 |
 
 ## 怎麼跑
 
@@ -61,3 +62,11 @@ await check('/samples/')        // 或 '/_fixtures/en/'、'/_fixtures/real/'
 
 大檔要給它時間：`frusg_2024.pdf`（4733 列／245 頁）預設的 5 秒載入可能不夠，
 用 `await check('/_fixtures/real/', { waitLoad: 12000 })`。
+
+### 對照截圖
+
+`sink-before.jpg`／`sink-after.jpg` 是「合計貼地線 + 文字置中」那個 bug 的修正前後，
+同一份 `03-參考表-01-OF-02-繳庫-1150812.pdf`（7 列、列高被拉到 94.7pt）、同樣開「平均列高：全部頁面」：
+修正前合計整列落在地線那條紅虛線**下方**（表尾註的位置），修正後回到線上方、貼著地線。
+PDF 本身不入庫，檔在主計總處 OneDrive 的「三校／3-綜計參考表」。
+數字量法見 `baseline-check.js`；這兩張只是給人眼確認版面長相用的。
