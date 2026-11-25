@@ -10,6 +10,7 @@
 | `generate_en.py` | 產生 `en/` 那批樣本 |
 | `selfcheck.py` | 對 `en/` 逐份跑 7 項檢查，全過才 `OVERALL: PASS` |
 | `clipscan.py` | 單獨使用：掃一批 PDF，找畫在頁面外被裁切的字 |
+| `baseline-check.js` | 在瀏覽器裡量每份 PDF 最後一列的基線有沒有越過地線 |
 
 ## 怎麼跑
 
@@ -33,3 +34,30 @@ find ~/somewhere -name '*.pdf' -print0 | xargs -0 python3 _fixtures/clipscan.py
 ```
 
 只印命中的檔（`-v` 連 0 的也印），命中時離開碼 1。它不需要 venv，只要 `pdftotext`。
+
+## baseline-check.js：量列有沒有越過地線
+
+排版改動（列高、合計貼地線、平均列高、表尾註收線）最容易壞在「最後一列掉到地線下面壓住註」。
+這支腳本把一個資料夾裡的 PDF 逐份載進 `index.html`、開「平均列高：全部頁面」，再量
+**最後一列的真基線 − 地線**。負值＝在地線上方（正常），正值＝越線。
+
+```bash
+python3 -m http.server 8731
+```
+
+瀏覽器開 `http://localhost:8731/index.html`，把 `_fixtures/baseline-check.js` 整個貼進 console，然後：
+
+```js
+await check('/samples/')        // 或 '/_fixtures/en/'、'/_fixtures/real/'
+```
+
+結果用 `console.table` 印出每份的「列數 + 最大越線 pt」。只要有正值就是有頁越線，再用那份檔
+逐頁看 `scanBaselines()` 的陣列找是哪一頁。沒有相依，也不用 venv，只要 Python 的 `http.server`
+（`file://` 不行：腳本要 `fetch` PDF）。
+
+**一定要量基線，不要量 `getBoundingClientRect().bottom`**：`.seg` 的字框下緣在基線下方約 0.2 個
+字級（Times 這類 ascent < 1em 的字型），`.row` 盒子更是往下留 0.2 個列高，兩者都會印出 1～3pt 的
+假性越線，也會蓋掉真的。理由見根目錄 README 的「表尾註：地線切不開它」。
+
+大檔要給它時間：`frusg_2024.pdf`（4733 列／245 頁）預設的 5 秒載入可能不夠，
+用 `await check('/_fixtures/real/', { waitLoad: 12000 })`。
