@@ -1178,7 +1178,9 @@ function render(){
     }
     const isTot=u=>/^[\s　]*[合總][\s　]*計/.test(u[0].map(s=>s.t).join(''));
     let tot=0; if(last && sink.checked) while(tot<pg.length && isTot(pg[pg.length-1-tot])) tot++;
-    const sunk = tot ? Math.max(0, botLimit-SINKGAP-(bodyTop+(n-1)*lh)) : 0;
+    // 最後一列的基線在「文字置中」時會往下挪 cy，沉降量要照同一條基線算，
+    // 否則置中時合計會沉到地線底下
+    const sunk = tot ? Math.max(0, botLimit-SINKGAP-(bodyTop+(n-1)*lh-cy)) : 0;
     let li=0;
     pg.forEach((u,i)=>{
       const dy = i>=pg.length-tot ? sunk : 0;
