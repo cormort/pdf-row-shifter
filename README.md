@@ -50,6 +50,16 @@ macOS 與 Windows 的 Chrome / Edge 都可用。Windows 上通常直接就有這
 被裁切的字」、`baseline-check.js` 量「最後一列基線 − 地線」有沒有越線（起 `python3 -m http.server`，
 在 `index.html` 的 console 貼上後 `await check('/samples/')`，全部負值就是過）。怎麼跑、要裝什麼（`pdfminer.six`、poppler 的 `pdftotext`）見 [`_fixtures/README.md`](_fixtures/README.md)。
 
+三支全跑一次的結果（2026-11-25，`index.html` 在 `3ee27d8`）：
+
+| 檢查 | 結果 |
+|---|---|
+| `baseline-check.js` | `samples/` 10 份 −3.3～−7.6pt、`_fixtures/en/` 7 份 −7.3～−13.4pt、`_fixtures/real/` 4 份 −1.2～−6.1pt，全部在地線上方 |
+| `selfcheck.py` | `OVERALL: PASS`（7 份 × 7 項，`pdftotext` 有裝所以第 7 項沒 SKIP） |
+| `clipscan.py` | `_fixtures/real/` 4 份（352 頁）`clipped=0`；`samples/` 只有 `固資成本效益` 第 27 頁 3 截字超出右緣，是原檔本來就印不出來的那種，見上面「裁切外的字」 |
+
+數字會隨改動變，重點是形狀：baseline 全負、selfcheck PASS、clipscan 只剩已知的那一處。
+
 ## 框線偵測：什麼條件下線條才會正常
 
 框線是從 pdf.js 的 operator list 自己追 CTM 還原出來的。用 13 份實際公文表做過驗證
