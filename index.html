@@ -1155,9 +1155,11 @@ function render(){
     const mid = vmid.checked, top0 = bodyTop-LH*.8;
     const avg = avgPg.has(pi), sp = mid ? n : Math.max(1,n-1);
     const div = bot => (bot-(mid?top0:bodyTop))/sp;
-    const lh = Math.max(minLH, avg ? div(botLimit)
+    // 最小列高是下限，但不能贏過地線：末頁的地線會被表尾註往上收，列數又是照原檔分的，
+    // 照 minLH 排就會整塊穿出地線、壓在註上面。排不下時讓 minLH 讓步，壓到剛好貼地線。
+    const lh = Math.min(Math.max(minLH, avg ? div(botLimit)
                              : !last ? div(Math.min(fillY,botLimit))
-                                     : Math.min(LH,div(botLimit)));
+                                     : Math.min(LH,div(botLimit))), div(botLimit));
     // 「合計貼地線」：最後一頁列不滿時，尾端那幾列合計／總計整塊沉到地線上方，
     // 中間留白；其餘列位置與行距都不動（跟「平均列高」把整頁拉開不同）。
     // 沉到哪裡＝地線再往上「合計離地線」那麼多（預設半個列高，見 relayout()）
