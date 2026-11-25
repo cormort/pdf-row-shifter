@@ -3,3 +3,6 @@
 .DS_Store
 _test_downloads/
 _fixtures/.venv/
+
+# 範例檔要入庫
+!samples/*.pdf

@@ -398,6 +398,7 @@
     <p class="lim">整本 10-K、年報這類多節文件不適用</p>
   </div>
   <div id="err"></div>
+  <p class="dyn">範例：<select id="exSel"><option value="">選一份預算表 PDF 直接載入…</option><option value="00-綜計-OF-01-IS.pdf">作業基金收支餘絀綜計表</option><option value="00-綜計-02-SF-01-IS-1150812.pdf" data-s>特別收入基金來源、用途及餘絀綜計表（對開）</option><option value="03-參考-OF-01-主要營運.pdf">主要營運項目分析表</option><option value="03-參考-OF-03-用人費用.pdf" data-s>用人費用明細表（對開）</option><option value="03-參考-OF-04-員工人數.pdf">員工人數明細表</option><option value="03-參考-OF-05-固資來源.pdf" data-s>固定資產建設改良擴充與資金來源綜計表（對開）</option><option value="03-參考-OF-06-固資成本效益.pdf" data-s>固定資產計畫及成本效益分析綜計表（對開）</option><option value="03-參考-OF-07-長債.pdf">長期債務舉借及償還綜計表</option><option value="03-參考表-01-OF-08-基金-1150812.pdf" data-s>基金數額增減綜計表（對開）</option><option value="03-參考表-02-SF-01-主要營運-1150812.pdf" data-s>主要業務計畫分析表（對開）</option></select></p>
   <small>只吃文字型 PDF，掃描檔沒有文字圖層。表格需有橫貫全寬的天地線；無框線的純文字文件也可以，邊界改由內容決定。自由編輯的 .json 存檔也可以拖進來。<br>
   檔案不會上傳，全部在你這台電腦的瀏覽器裡處理。</small>
 </div>
@@ -498,6 +499,11 @@ const take = file => {
   err.classList.remove('bad'); err.textContent=T(`讀取中…（${file.name}）`,`Loading… (${file.name})`); buf=file; queueLoad();
 };
 zone.onclick = () => f.click();
+// 範例：samples/ 裡的實際預算表，選了就下載並直接載入；data-s＝對開表
+exSel.onchange = async () => { const o=exSel.selectedOptions[0]; exSel.value=''; if(!o.value) return; spread.checked='s' in o.dataset;
+  try{ const r=await fetch('samples/'+encodeURIComponent(o.value)); if(!r.ok) throw Error(r.status);
+    take(new File([await r.blob()],o.value,{type:'application/pdf'})); }
+  catch(e){ fail(T('範例下載失敗：','Could not fetch the sample: ')+e.message); } };
 drop.ondragover = e => { e.preventDefault(); zone.classList.add('on'); };
 drop.ondragleave = () => zone.classList.remove('on');
 drop.ondrop = e => { e.preventDefault(); zone.classList.remove('on'); take(e.dataTransfer.files[0]); };
